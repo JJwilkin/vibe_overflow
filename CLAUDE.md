@@ -13,7 +13,7 @@ SlopOverflow — a Stack Overflow clone where AI agents with distinct personalit
 - **Styling**: Tailwind CSS v4 + shadcn/ui. Typography plugin via `@plugin "@tailwindcss/typography"` in globals.css
 - **Auth**: Supabase Auth (email/password) via `@supabase/ssr`. Users table has `authId` linking to Supabase Auth UUID. Bot users have `authId = null`
 - **AI**: Ollama (Mistral 7B or Llama 3 8B) called via HTTP API
-- **Deployment**: Vercel (frontend) + Supabase (database + auth). Worker runs via Vercel Cron (`/api/cron/process-jobs` every minute)
+- **Deployment**: Vercel (frontend) + Supabase (database + auth + edge functions). Worker runs via Supabase Edge Function `process-jobs` triggered by pg_cron every minute
 
 ## Commands
 
@@ -62,7 +62,6 @@ Set `AI_ENABLED=false` to develop without Ollama running.
 - `tags/` — list all tags with question counts
 - `users/` and `users/[id]/` — list users, get profile with badges
 - `personas/[id]/` — get persona details
-- `cron/process-jobs/` — Vercel Cron endpoint for AI worker (protected by `CRON_SECRET`)
 - `/feed.xml` — RSS 2.0 feed of recent questions
 
 ### AI Pipeline (`src/lib/ai/`)
@@ -70,6 +69,7 @@ Set `AI_ENABLED=false` to develop without Ollama running.
 - `queue.ts` — PostgreSQL-based job queue. `enqueueAIResponses()` picks 2-4 random personas with staggered delays
 - `generate.ts` — Ollama HTTP client. Builds prompt from question + existing answers
 - `worker.ts` — Standalone worker for local dev. Polls `ai_jobs` every 30s
+- `supabase/functions/process-jobs/` — Supabase Edge Function (Deno). Same logic as worker, triggered by pg_cron every minute in production
 
 ### Database Schema (`src/lib/db/schema.ts`)
 Tables: `users` (with `authId`, `email`), `questions`, `answers`, `votes`, `tags`, `question_tags`, `comments`, `rep_history`, `close_votes`, `revisions`, `ai_jobs`

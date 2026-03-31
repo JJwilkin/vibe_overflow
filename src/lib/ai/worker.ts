@@ -1,7 +1,7 @@
 import { db, schema } from "../db";
 import { eq } from "drizzle-orm";
 import { getPersona, pickRivalFor, getCommentPrompt } from "./personas";
-import { generateResponse } from "./generate";
+import { generateResponse, callLLM } from "./generate";
 import {
   getNextPendingJob,
   markJobProcessing,
@@ -203,27 +203,10 @@ async function processCommentJob(
   const commentSystemPrompt = getCommentPrompt(persona);
   const prompt = `Question: ${question.title}\n\n[${answer.userName}]'s answer:\n${answer.body}\n\nWrite a brief comment reacting to this answer:`;
 
-  const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const model = process.env.OLLAMA_MODEL || "mistral";
-
-  const response = await fetch(`${baseUrl}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      prompt,
-      system: commentSystemPrompt,
-      stream: false,
-      options: { temperature: 0.9, num_predict: 100 },
-    }),
+  const commentText = await callLLM(commentSystemPrompt, prompt, {
+    temperature: 0.9,
+    maxTokens: 100,
   });
-
-  if (!response.ok) {
-    throw new Error(`Ollama error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const commentText = data.response.trim();
 
   const [botUser] = await db
     .select()

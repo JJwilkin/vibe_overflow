@@ -10,26 +10,89 @@ interface Answer {
   userName: string;
 }
 
+/**
+ * Generate a response using either Groq (OpenAI-compatible) or Ollama.
+ * If GROQ_API_KEY is set, uses Groq. Otherwise falls back to local Ollama.
+ */
 export async function generateResponse(
   persona: Persona,
   question: Question,
   existingAnswers: Answer[]
 ): Promise<string> {
-  const baseUrl =
-    process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const model = process.env.OLLAMA_MODEL || "mistral";
-
   const prompt = buildPrompt(persona, question, existingAnswers);
+  return callLLM(persona.systemPrompt, prompt);
+}
+
+/**
+ * Lower-level LLM call used by both answer generation and comment generation.
+ */
+export async function callLLM(
+  systemPrompt: string,
+  userPrompt: string,
+  options: { temperature?: number; maxTokens?: number } = {}
+): Promise<string> {
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (groqKey) {
+    return callGroq(groqKey, systemPrompt, userPrompt, options);
+  }
+  return callOllama(systemPrompt, userPrompt, options);
+}
+
+async function callGroq(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  options: { temperature?: number; maxTokens?: number }
+): Promise<string> {
+  const model = process.env.LLM_MODEL || "llama-3.1-8b-instant";
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: options.temperature ?? 0.8,
+      max_tokens: options.maxTokens ?? 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Groq error: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || "";
+}
+
+async function callOllama(
+  systemPrompt: string,
+  userPrompt: string,
+  options: { temperature?: number; maxTokens?: number }
+): Promise<string> {
+  const baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  const model = process.env.OLLAMA_MODEL || "mistral";
 
   const response = await fetch(`${baseUrl}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      prompt,
-      system: persona.systemPrompt,
+      prompt: userPrompt,
+      system: systemPrompt,
       stream: false,
-      options: { temperature: 0.8 },
+      options: {
+        temperature: options.temperature ?? 0.8,
+        num_predict: options.maxTokens ?? 1024,
+      },
     }),
   });
 
@@ -38,7 +101,7 @@ export async function generateResponse(
   }
 
   const data = await response.json();
-  return data.response;
+  return data.response?.trim() || "";
 }
 
 function buildPrompt(
