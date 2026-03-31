@@ -108,9 +108,15 @@ export default function Navbar() {
             </>
           ) : user?.isAnonymous ? (
             <>
-              <span className="text-[12px] text-[#6a737c] px-1">
+              <span className="text-[12px] text-[#6a737c] px-1 hidden sm:inline">
                 {user.displayName}
               </span>
+              <button
+                onClick={handleLogout}
+                className="text-[12px] text-[#838c95] hover:text-[#525960] px-2"
+              >
+                log out
+              </button>
               <button
                 onClick={() => openAuth("signup")}
                 className="h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc]"
