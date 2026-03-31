@@ -10,15 +10,11 @@ export async function enqueueAIResponses(questionId: number) {
 
   for (let i = 0; i < selectedPersonas.length; i++) {
     const persona = selectedPersonas[i];
-    const [minDelay, maxDelay] = persona.responseDelay;
-    const delaySec =
-      minDelay + Math.floor(Math.random() * (maxDelay - minDelay));
-    const scheduledFor = new Date(Date.now() + delaySec * 1000);
 
     await db.insert(schema.aiJobs).values({
       questionId,
       personaId: persona.id,
-      scheduledFor,
+      scheduledFor: new Date(),
     });
   }
 }

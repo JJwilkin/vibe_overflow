@@ -9,7 +9,7 @@ import {
   markJobFailed,
 } from "./queue";
 
-const POLL_INTERVAL = 30_000; // 30 seconds
+const POLL_INTERVAL = 5_000; // 5 seconds
 const COMMENT_PROBABILITY = 0.4; // 40% chance a bot answer triggers a rival comment
 
 async function processNextJob(): Promise<boolean> {

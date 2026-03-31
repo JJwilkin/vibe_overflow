@@ -114,31 +114,45 @@ async function callGroq(
   options: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
   const model = Deno.env.get("LLM_MODEL") || "llama-3.1-8b-instant";
+  const maxRetries = 5;
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: options.temperature ?? 0.8,
-      max_tokens: options.maxTokens ?? 1024,
-    }),
-  });
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: options.temperature ?? 0.8,
+        max_tokens: options.maxTokens ?? 1024,
+      }),
+    });
 
-  if (!response.ok) {
+    if (response.ok) {
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content?.trim() || "";
+    }
+
+    if (response.status === 429) {
+      const text = await response.text();
+      const retryMatch = text.match(/try again in ([\d.]+)s/);
+      const waitSec = retryMatch ? parseFloat(retryMatch[1]) + 1 : (attempt + 1) * 8;
+      console.log(`  ⏳ Rate limited, waiting ${waitSec.toFixed(1)}s (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+
     const text = await response.text();
     throw new Error(`Groq error: ${response.status} ${text}`);
   }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() || "";
+  throw new Error("Groq rate limit: max retries exceeded");
 }
 
 async function callOllama(
