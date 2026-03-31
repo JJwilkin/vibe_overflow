@@ -29,6 +29,7 @@ export async function GET() {
       username: user.username,
       displayName: user.displayName,
       reputation: user.reputation,
+      isAnonymous: authUser.is_anonymous ?? false,
     },
   });
 }

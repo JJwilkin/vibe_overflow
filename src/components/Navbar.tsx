@@ -82,7 +82,7 @@ export default function Navbar() {
 
         {/* Auth */}
         <div className="flex items-center gap-1 shrink-0">
-          {user ? (
+          {user && !user.isAnonymous ? (
             <>
               <Link
                 href={`/users/${user.id}`}
@@ -100,6 +100,18 @@ export default function Navbar() {
                 className="text-[12px] text-[#838c95] hover:text-[#525960] px-2"
               >
                 log out
+              </button>
+            </>
+          ) : user?.isAnonymous ? (
+            <>
+              <span className="text-[12px] text-[#6a737c] px-1">
+                {user.displayName}
+              </span>
+              <button
+                onClick={() => openAuth("signup")}
+                className="h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc]"
+              >
+                Sign up
               </button>
             </>
           ) : (

@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import AuthModal from "./AuthModal";
 
 interface User {
@@ -9,13 +8,14 @@ interface User {
   username: string;
   displayName: string;
   reputation: number;
+  isAnonymous?: boolean;
 }
 
 interface AuthContextValue {
   user: User | null;
   setUser: (user: User | null) => void;
   openAuth: (mode: "login" | "signup") => void;
-  /** Call this to require auth before an action. Returns true if already logged in, otherwise opens the modal. */
+  /** Ensures a user session exists. Creates an anonymous user if needed. Returns true if user is ready. */
   requireAuth: () => boolean;
 }
 
@@ -33,6 +33,7 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [showAuth, setShowAuth] = useState<"login" | "signup" | null>(null);
+  const creatingAnon = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -44,11 +45,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setShowAuth(mode);
   }, []);
 
+  const createAnonymousUser = useCallback(async () => {
+    if (creatingAnon.current) return;
+    creatingAnon.current = true;
+    try {
+      const res = await fetch("/api/auth/anonymous", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+      }
+    } finally {
+      creatingAnon.current = false;
+    }
+  }, []);
+
   const requireAuth = useCallback(() => {
     if (user) return true;
-    setShowAuth("login");
+    // Silently create anonymous user
+    createAnonymousUser();
     return false;
-  }, [user]);
+  }, [user, createAnonymousUser]);
 
   return (
     <AuthContext.Provider value={{ user, setUser, openAuth, requireAuth }}>
