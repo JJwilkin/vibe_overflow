@@ -50,6 +50,7 @@ interface Comment {
   userId: number;
   questionId: number | null;
   answerId: number | null;
+  score: number;
   userName: string;
   isBot: boolean;
   createdAt: string;
@@ -285,6 +286,7 @@ export default function QuestionPage({
                 id: c.id,
                 body: c.body,
                 userId: c.userId,
+                score: c.score,
                 userName: c.userName,
                 isBot: c.isBot,
                 createdAt: c.createdAt,

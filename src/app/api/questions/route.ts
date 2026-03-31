@@ -92,26 +92,26 @@ export async function POST(request: NextRequest) {
 
   // Attach tags (create if they don't exist)
   if (tags && Array.isArray(tags)) {
-    for (const tagName of tags) {
-      let [tag] = await db
+    for (const rawTag of tags) {
+      const tagName = rawTag.trim().toLowerCase();
+      if (!tagName) continue;
+
+      // Upsert: insert or get existing
+      await db
+        .insert(schema.tags)
+        .values({ name: tagName })
+        .onConflictDoNothing();
+
+      const [tag] = await db
         .select()
         .from(schema.tags)
         .where(eq(schema.tags.name, tagName));
 
-      if (!tag) {
-        [tag] = await db
-          .insert(schema.tags)
-          .values({ name: tagName })
-          .returning();
-      }
-
-      try {
-        await db.insert(schema.questionTags).values({
-          questionId: question.id,
-          tagId: tag.id,
-        });
-      } catch {
-        // Ignore duplicate tag assignments
+      if (tag) {
+        await db
+          .insert(schema.questionTags)
+          .values({ questionId: question.id, tagId: tag.id })
+          .onConflictDoNothing();
       }
     }
   }

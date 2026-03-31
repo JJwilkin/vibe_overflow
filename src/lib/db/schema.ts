@@ -131,6 +131,36 @@ export const comments = pgTable("comments", {
     .references(() => users.id),
   questionId: integer("question_id").references(() => questions.id),
   answerId: integer("answer_id").references(() => answers.id),
+  score: integer("score").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const commentVotes = pgTable(
+  "comment_votes",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id),
+    commentId: integer("comment_id")
+      .notNull()
+      .references(() => comments.id),
+    value: integer("value").notNull(),
+  },
+  (table) => [
+    uniqueIndex("comment_vote_user_comment").on(table.userId, table.commentId),
+  ]
+);
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  type: text("type").notNull(), // "answer", "comment", "mention"
+  message: text("message").notNull(),
+  link: text("link").notNull(),
+  read: boolean("read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

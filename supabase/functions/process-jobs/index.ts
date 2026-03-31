@@ -248,6 +248,21 @@ async function processAnswer(
     .select("id")
     .single();
 
+  // Notify question author
+  const { data: qAuthor } = await supabase
+    .from("questions")
+    .select("user_id")
+    .eq("id", job.question_id)
+    .single();
+  if (qAuthor && qAuthor.user_id !== botUser.id && answer) {
+    await supabase.from("notifications").insert({
+      user_id: qAuthor.user_id,
+      type: "answer",
+      message: `${persona.displayName} answered your question "${question.title.slice(0, 60)}"`,
+      link: `/questions/${job.question_id}#answer-${answer.id}`,
+    });
+  }
+
   // Maybe enqueue rival comment
   if (answer && Math.random() < COMMENT_PROBABILITY) {
     const rival = pickRivalFor(persona.id);
@@ -270,32 +285,6 @@ async function processComment(
   job: Job,
   persona: Persona
 ) {
-  // Enforce bot comment limit per thread
-  const threadFilter = job.answer_id
-    ? `comments.answer_id.eq.${job.answer_id}`
-    : `and(comments.question_id.eq.${job.question_id},comments.answer_id.is.null)`;
-
-  // Count existing bot comments in this thread
-  let botCommentCount = 0;
-  if (job.answer_id) {
-    const { count } = await supabase
-      .from("comments")
-      .select("id, users!inner(is_bot)", { count: "exact", head: true })
-      .eq("answer_id", job.answer_id)
-      .eq("users.is_bot", true);
-    botCommentCount = count || 0;
-  } else {
-    const { count } = await supabase
-      .from("comments")
-      .select("id, users!inner(is_bot)", { count: "exact", head: true })
-      .eq("question_id", job.question_id)
-      .is("answer_id", null)
-      .eq("users.is_bot", true);
-    botCommentCount = count || 0;
-  }
-
-  if (botCommentCount >= MAX_BOT_COMMENTS_PER_THREAD) return;
-
   const { data: question } = await supabase
     .from("questions")
     .select("title, body")
@@ -377,6 +366,37 @@ async function processComment(
     answer_id: job.answer_id,
     question_id: job.question_id,
   });
+
+  // Notify the relevant author
+  if (job.answer_id) {
+    const { data: answerAuthor } = await supabase
+      .from("answers")
+      .select("user_id")
+      .eq("id", job.answer_id)
+      .single();
+    if (answerAuthor && answerAuthor.user_id !== botUser.id) {
+      await supabase.from("notifications").insert({
+        user_id: answerAuthor.user_id,
+        type: "comment",
+        message: `${persona.displayName} commented on your answer`,
+        link: `/questions/${job.question_id}#answer-${job.answer_id}`,
+      });
+    }
+  } else {
+    const { data: qAuthor } = await supabase
+      .from("questions")
+      .select("user_id")
+      .eq("id", job.question_id)
+      .single();
+    if (qAuthor && qAuthor.user_id !== botUser.id) {
+      await supabase.from("notifications").insert({
+        user_id: qAuthor.user_id,
+        type: "comment",
+        message: `${persona.displayName} commented on your question`,
+        link: `/questions/${job.question_id}`,
+      });
+    }
+  }
 }
 
 async function maybeInflateViews(supabase: ReturnType<typeof createClient>) {

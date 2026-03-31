@@ -4,7 +4,7 @@ import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
-  const { email, password, displayName } = await request.json();
+  const { email, password, displayName, captchaToken } = await request.json();
 
   if (!email || !password || !displayName) {
     return NextResponse.json(
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
     email,
     password,
     options: {
+      captchaToken,
       data: {
         display_name: displayName.trim(),
         username: cleanUsername,

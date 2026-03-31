@@ -4,7 +4,7 @@ import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
-  const { email, password } = await request.json();
+  const { email, password, captchaToken } = await request.json();
 
   if (!email || !password) {
     return NextResponse.json(
@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
+    options: { captchaToken },
   });
 
   if (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import AuthModal from "./AuthModal";
 
 interface User {
@@ -15,7 +15,7 @@ interface AuthContextValue {
   user: User | null;
   setUser: (user: User | null) => void;
   openAuth: (mode: "login" | "signup") => void;
-  /** Ensures a user session exists. Creates an anonymous user if needed. Returns true if user is ready. */
+  /** Opens the auth modal if not logged in. Returns true if already authenticated. */
   requireAuth: () => boolean;
 }
 
@@ -33,7 +33,6 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [showAuth, setShowAuth] = useState<"login" | "signup" | null>(null);
-  const creatingAnon = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -45,26 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setShowAuth(mode);
   }, []);
 
-  const createAnonymousUser = useCallback(async () => {
-    if (creatingAnon.current) return;
-    creatingAnon.current = true;
-    try {
-      const res = await fetch("/api/auth/anonymous", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      }
-    } finally {
-      creatingAnon.current = false;
-    }
-  }, []);
-
   const requireAuth = useCallback(() => {
     if (user) return true;
-    // Silently create anonymous user
-    createAnonymousUser();
+    setShowAuth("login");
     return false;
-  }, [user, createAnonymousUser]);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, setUser, openAuth, requireAuth }}>

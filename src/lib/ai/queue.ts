@@ -111,6 +111,26 @@ export async function enqueueCommentReplies(
   }
 }
 
+/**
+ * Enqueue a mention-triggered bot reply. Bypasses the per-thread comment limit.
+ */
+export async function enqueueMentionReply(
+  questionId: number,
+  answerId: number | null,
+  personaId: string,
+) {
+  if (process.env.AI_ENABLED === "false") return;
+
+  const delaySec = 15 + Math.floor(Math.random() * 60); // 15-75s (faster for mentions)
+  await db.insert(schema.aiJobs).values({
+    questionId,
+    answerId: answerId ?? undefined,
+    jobType: "comment",
+    personaId,
+    scheduledFor: new Date(Date.now() + delaySec * 1000),
+  });
+}
+
 export async function markJobFailed(jobId: number, error: string, attempts: number) {
   const status = attempts >= 3 ? "failed" : "pending";
   await db

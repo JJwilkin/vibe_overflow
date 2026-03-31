@@ -10,6 +10,7 @@ interface AnswerComment {
   id: number;
   body: string;
   userId: number;
+  score: number;
   userName: string;
   isBot: boolean;
   createdAt: string;

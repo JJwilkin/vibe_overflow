@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import NotificationBell from "./NotificationBell";
 
 export default function Navbar() {
   const router = useRouter();
@@ -65,6 +66,9 @@ export default function Navbar() {
             />
           </div>
         </form>
+
+        {/* Notifications */}
+        {user && <NotificationBell />}
 
         {/* Dark mode toggle */}
         <button

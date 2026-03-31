@@ -1,12 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db, schema } from "@/lib/db";
 
 // POST /api/auth/anonymous — create an anonymous guest user
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const captchaToken = body.captchaToken;
+
   const supabase = await createClient();
 
-  const { data, error } = await supabase.auth.signInAnonymously();
+  const { data, error } = await supabase.auth.signInAnonymously({
+    options: { captchaToken },
+  });
 
   if (error || !data.user) {
     return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 // GET /api/questions/[id] — get single question with answers
 export async function GET(
@@ -79,13 +79,14 @@ export async function GET(
       userId: schema.comments.userId,
       questionId: schema.comments.questionId,
       answerId: schema.comments.answerId,
+      score: schema.comments.score,
       createdAt: schema.comments.createdAt,
       userName: schema.users.displayName,
       isBot: schema.users.isBot,
     })
     .from(schema.comments)
     .innerJoin(schema.users, eq(schema.comments.userId, schema.users.id))
-    .where(eq(schema.comments.questionId, questionId))
+    .where(and(eq(schema.comments.questionId, questionId), sql`${schema.comments.answerId} IS NULL`))
     .orderBy(schema.comments.createdAt);
 
   // Also get comments on answers for this question
@@ -99,6 +100,7 @@ export async function GET(
         userId: schema.comments.userId,
         questionId: schema.comments.questionId,
         answerId: schema.comments.answerId,
+        score: schema.comments.score,
         createdAt: schema.comments.createdAt,
         userName: schema.users.displayName,
         isBot: schema.users.isBot,

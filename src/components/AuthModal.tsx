@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 interface AuthModalProps {
   mode: "login" | "signup";
   onClose: () => void;
-  onSuccess: (user: { id: number; username: string; displayName: string; reputation: number }) => void;
+  onSuccess: (user: { id: number; username: string; displayName: string; reputation: number; isAnonymous?: boolean }) => void;
 }
+
+const HCAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || "";
 
 export default function AuthModal({ mode: initialMode, onClose, onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState(initialMode);
@@ -16,16 +19,22 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<HCaptcha>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (HCAPTCHA_SITE_KEY && !captchaToken) {
+      setError("Please complete the captcha");
+      return;
+    }
     setError("");
     setLoading(true);
 
     const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
     const body = mode === "login"
-      ? { email, password }
-      : { email, password, displayName };
+      ? { email, password, captchaToken }
+      : { email, password, displayName, captchaToken };
 
     const res = await fetch(endpoint, {
       method: "POST",
@@ -38,6 +47,31 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
       onSuccess(data);
     } else {
       setError(data.error);
+      captchaRef.current?.resetCaptcha();
+      setCaptchaToken(null);
+    }
+    setLoading(false);
+  }
+
+  async function handleGuest() {
+    if (HCAPTCHA_SITE_KEY && !captchaToken) {
+      setError("Please complete the captcha");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    const res = await fetch("/api/auth/anonymous", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captchaToken }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      onSuccess(data);
+    } else {
+      setError(data.error);
+      captchaRef.current?.resetCaptcha();
+      setCaptchaToken(null);
     }
     setLoading(false);
   }
@@ -45,6 +79,8 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
   function switchMode() {
     setMode(mode === "login" ? "signup" : "login");
     setError("");
+    captchaRef.current?.resetCaptcha();
+    setCaptchaToken(null);
   }
 
   return (
@@ -52,7 +88,7 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-[430px] mx-4 p-8">
+      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-[430px] mx-4 p-8 max-h-[90vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -107,7 +143,7 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
             />
           </div>
 
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="block text-[15px] font-semibold text-[#0c0d0e] mb-1">
               Password
             </label>
@@ -139,6 +175,18 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
             </div>
           </div>
 
+          {/* hCaptcha */}
+          {HCAPTCHA_SITE_KEY && (
+            <div className="mb-4 flex justify-center">
+              <HCaptcha
+                ref={captchaRef}
+                sitekey={HCAPTCHA_SITE_KEY}
+                onVerify={(token) => setCaptchaToken(token)}
+                onExpire={() => setCaptchaToken(null)}
+              />
+            </div>
+          )}
+
           {error && (
             <p className="text-[13px] text-[#de4f54] mb-4">{error}</p>
           )}
@@ -152,8 +200,28 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
           </button>
         </form>
 
+        {/* OR divider */}
+        <div className="flex items-center gap-4 my-5">
+          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
+          <span className="text-[13px] text-[#6a737c]">OR</span>
+          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
+        </div>
+
+        {/* Continue as guest */}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleGuest}
+          className="w-full h-[40px] bg-[#f8f9f9] text-[#3b4045] text-[14px] font-medium rounded-[5px] border border-[#d6d9dc] hover:bg-[#e3e6e8] disabled:opacity-50"
+        >
+          {loading ? "..." : "Continue as guest"}
+        </button>
+        <p className="text-[12px] text-[#838c95] mt-2">
+          Post without an account. Your activity won&apos;t be saved if you clear your browser data.
+        </p>
+
         {/* Switch mode */}
-        <p className="mt-6 text-[13px] text-[#232629]">
+        <p className="mt-5 text-[13px] text-[#232629]">
           {mode === "signup" ? (
             <>Already have an account? <button onClick={switchMode} className="text-[#0074cc] hover:text-[#0063bf]">Log in</button></>
           ) : (
