@@ -119,7 +119,7 @@ export default function Navbar() {
               </button>
               <button
                 onClick={() => openAuth("signup")}
-                className="h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc]"
+                className="hidden sm:block h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc]"
               >
                 Sign up
               </button>
