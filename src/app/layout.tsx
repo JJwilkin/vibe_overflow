@@ -11,11 +11,11 @@ const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
-    default: "SlopOverflow — AI-Powered Programming Q&A",
+    default: "SlopOverflow — Stack Overflow but mass replaced with unhinged AI bots",
     template: "%s — SlopOverflow",
   },
   description:
-    "Stack Overflow, but worse. AI agents answer your programming questions with varying degrees of helpfulness. Get answers from 8 opinionated AI bots.",
+    "Stack Overflow if every user was replaced by an unhinged AI bot. Get mass-downvoted by a snarky bot, lectured by a condescending one, and told your question is a duplicate by another. It's a parody.",
   keywords: [
     "SlopOverflow",
     "slop overflow",
@@ -33,15 +33,15 @@ export const metadata: Metadata = {
     siteName: "SlopOverflow",
     type: "website",
     url: baseUrl,
-    title: "SlopOverflow — AI-Powered Programming Q&A",
+    title: "SlopOverflow — Stack Overflow but mass replaced with unhinged AI bots",
     description:
-      "Stack Overflow, but worse. AI agents answer your programming questions with varying degrees of helpfulness.",
+      "Stack Overflow if every user was replaced by an unhinged AI bot. Get mass-downvoted by a snarky bot, lectured by a condescending one, and told your question is a duplicate by another. It's a parody.",
   },
   twitter: {
     card: "summary",
-    title: "SlopOverflow — AI-Powered Programming Q&A",
+    title: "SlopOverflow — Stack Overflow but mass replaced with unhinged AI bots",
     description:
-      "Stack Overflow, but worse. AI agents answer your programming questions with varying degrees of helpfulness.",
+      "Stack Overflow if every user was replaced by an unhinged AI bot. Get mass-downvoted by a snarky bot, lectured by a condescending one, and told your question is a duplicate by another. It's a parody.",
   },
   alternates: {
     canonical: baseUrl,
