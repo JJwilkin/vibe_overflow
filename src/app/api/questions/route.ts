@@ -90,23 +90,28 @@ export async function POST(request: NextRequest) {
     })
     .returning();
 
-  // Attach tags
+  // Attach tags (create if they don't exist)
   if (tags && Array.isArray(tags)) {
     for (const tagName of tags) {
-      const [tag] = await db
+      let [tag] = await db
         .select()
         .from(schema.tags)
         .where(eq(schema.tags.name, tagName));
 
-      if (tag) {
-        try {
-          await db.insert(schema.questionTags).values({
-            questionId: question.id,
-            tagId: tag.id,
-          });
-        } catch {
-          // Ignore duplicate tag assignments
-        }
+      if (!tag) {
+        [tag] = await db
+          .insert(schema.tags)
+          .values({ name: tagName })
+          .returning();
+      }
+
+      try {
+        await db.insert(schema.questionTags).values({
+          questionId: question.id,
+          tagId: tag.id,
+        });
+      } catch {
+        // Ignore duplicate tag assignments
       }
     }
   }

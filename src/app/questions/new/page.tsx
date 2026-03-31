@@ -1,26 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthContext";
 
 export default function AskQuestion() {
   const router = useRouter();
+  const { requireAuth } = useAuth();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.user) {
-          router.push("/");
-        }
-      });
-  }, [router]);
 
   function addTag(tag: string) {
     const clean = tag.trim().toLowerCase();
@@ -36,6 +28,7 @@ export default function AskQuestion() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!requireAuth()) return;
     setError("");
 
     if (!title.trim() || !body.trim()) {

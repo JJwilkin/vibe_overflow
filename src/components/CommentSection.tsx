@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "./AuthContext";
+import CommentTypingIndicator from "./CommentTypingIndicator";
 
 interface Comment {
   id: number;
@@ -40,6 +42,7 @@ export default function CommentSection({
   isLoggedIn,
   onCommentAdded,
 }: CommentSectionProps) {
+  const { requireAuth } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -88,9 +91,17 @@ export default function CommentSection({
         </div>
       ))}
 
-      {isLoggedIn && !showForm && (
+      {questionId && (
+        <CommentTypingIndicator questionId={questionId} answerId={answerId} />
+      )}
+
+      {!showForm && (
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            if (isLoggedIn || requireAuth()) {
+              setShowForm(true);
+            }
+          }}
           className="text-[13px] text-[#838c95] hover:text-[#0074cc] py-1.5"
         >
           Add a comment

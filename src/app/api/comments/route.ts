@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth/session";
+import { enqueueCommentReplies } from "@/lib/ai/queue";
 
 // POST /api/comments — add a comment to a question or answer
 export async function POST(request: NextRequest) {
@@ -34,6 +35,9 @@ export async function POST(request: NextRequest) {
       answerId: answerId || null,
     })
     .returning();
+
+  // Enqueue bot comment replies (non-blocking)
+  enqueueCommentReplies(questionId || 0, answerId || null).catch(() => {});
 
   return NextResponse.json({ comment }, { status: 201 });
 }

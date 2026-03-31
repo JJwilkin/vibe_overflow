@@ -151,6 +151,7 @@ export default function AnswerCard({
 
         <CommentSection
           comments={comments}
+          questionId={questionId}
           answerId={id}
           isLoggedIn={isLoggedIn}
           onCommentAdded={onCommentAdded || (() => {})}

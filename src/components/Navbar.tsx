@@ -3,26 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
-
-interface User {
-  id: number;
-  username: string;
-  displayName: string;
-  reputation: number;
-}
+import { useAuth } from "./AuthContext";
 
 export default function Navbar() {
   const router = useRouter();
-  const supabase = createClient();
-  const [user, setUser] = useState<User | null>(null);
-  const [showAuth, setShowAuth] = useState<"login" | "signup" | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const { user, setUser, openAuth } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
@@ -32,59 +18,6 @@ export default function Navbar() {
       document.documentElement.classList.add("so-dark");
     }
   }, []);
-
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => r.json())
-      .then((data) => setUser(data.user));
-  }, []);
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-
-    if (res.ok) {
-      setUser(data);
-      setShowAuth(null);
-      setEmail("");
-      setPassword("");
-    } else {
-      setError(data.error);
-    }
-    setLoading(false);
-  }
-
-  async function handleSignup(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, displayName }),
-    });
-    const data = await res.json();
-
-    if (res.ok) {
-      setUser(data);
-      setShowAuth(null);
-      setEmail("");
-      setPassword("");
-      setDisplayName("");
-    } else {
-      setError(data.error);
-    }
-    setLoading(false);
-  }
 
   async function handleLogout() {
     await fetch("/api/auth", { method: "DELETE" });
@@ -169,74 +102,16 @@ export default function Navbar() {
                 log out
               </button>
             </>
-          ) : showAuth ? (
-            <form
-              onSubmit={showAuth === "login" ? handleLogin : handleSignup}
-              className="flex items-center gap-1.5"
-            >
-              {showAuth === "signup" && (
-                <input
-                  type="text"
-                  placeholder="Display name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="h-[33px] w-[110px] px-2 border border-[#babfc4] rounded-[3px] text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
-                />
-              )}
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-[33px] w-[140px] px-2 border border-[#babfc4] rounded-[3px] text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
-                autoFocus
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-[33px] w-[110px] px-2 border border-[#babfc4] rounded-[3px] text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc] whitespace-nowrap disabled:opacity-50"
-              >
-                {loading ? "..." : showAuth === "login" ? "Log in" : "Sign up"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAuth(null);
-                  setError("");
-                }}
-                className="text-[12px] text-[#838c95] hover:text-[#525960]"
-              >
-                ✕
-              </button>
-              {error && (
-                <span className="text-[11px] text-[#de4f54] max-w-[120px] truncate">
-                  {error}
-                </span>
-              )}
-            </form>
           ) : (
             <>
               <button
-                onClick={() => {
-                  setShowAuth("login");
-                  setError("");
-                }}
+                onClick={() => openAuth("login")}
                 className="h-[33px] px-2.5 bg-[#e1ecf4] text-[#39739d] text-[13px] rounded-[3px] border border-[#7aa7c7] hover:bg-[#b3d3ea] hover:text-[#2c5877]"
               >
                 Log in
               </button>
               <button
-                onClick={() => {
-                  setShowAuth("signup");
-                  setError("");
-                }}
+                onClick={() => openAuth("signup")}
                 className="h-[33px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc]"
               >
                 Sign up

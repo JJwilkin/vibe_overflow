@@ -12,6 +12,7 @@ import DuplicateBanner from "@/components/DuplicateBanner";
 import ClosedBanner from "@/components/ClosedBanner";
 import TypingIndicator from "@/components/TypingIndicator";
 import MarkdownEditor from "@/components/MarkdownEditor";
+import { useAuth } from "@/components/AuthContext";
 
 interface Question {
   id: number;
@@ -79,18 +80,12 @@ export default function QuestionPage({
   const [tags, setTags] = useState<string[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [closeVotes, setCloseVotes] = useState<Array<{ id: number; reason: string; userName: string }>>([]);
+  const { user, requireAuth } = useAuth();
   const [answerBody, setAnswerBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [user, setUser] = useState<{ id: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<"score" | "newest" | "oldest">("score");
   const [newActivityToast, setNewActivityToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => r.json())
-      .then((data) => setUser(data.user));
-  }, []);
 
   useEffect(() => {
     loadQuestion();
@@ -308,27 +303,25 @@ export default function QuestionPage({
           Your Answer
         </h3>
 
-        {user ? (
-          <form onSubmit={handleSubmitAnswer}>
-            <div className="mb-3">
-              <MarkdownEditor
-                value={answerBody}
-                onChange={setAnswerBody}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={submitting || !answerBody.trim()}
-              className="h-[38px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? "Posting..." : "Post Your Answer"}
-            </button>
-          </form>
-        ) : (
-          <p className="text-[#6a737c] text-[13px] py-4 border-t border-[#d6d9dc]">
-            Pick a username in the top bar to post an answer.
-          </p>
-        )}
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (!requireAuth()) return;
+          handleSubmitAnswer(e);
+        }}>
+          <div className="mb-3">
+            <MarkdownEditor
+              value={answerBody}
+              onChange={setAnswerBody}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={submitting || !answerBody.trim()}
+            className="h-[38px] px-2.5 bg-[#0a95ff] text-white text-[13px] rounded-[3px] border border-[#0a95ff] hover:bg-[#0074cc] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Posting..." : "Post Your Answer"}
+          </button>
+        </form>
       </div>
 
       {/* New activity toast */}

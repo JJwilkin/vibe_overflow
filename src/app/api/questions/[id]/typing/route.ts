@@ -14,6 +14,7 @@ export async function GET(
     .select({
       personaId: schema.aiJobs.personaId,
       jobType: schema.aiJobs.jobType,
+      answerId: schema.aiJobs.answerId,
       userName: schema.users.displayName,
       avatar: schema.users.avatarUrl,
     })
@@ -35,6 +36,8 @@ export async function GET(
   const typing = activeJobs.map((j) => ({
     name: j.userName,
     avatar: j.avatar,
+    jobType: j.jobType,
+    answerId: j.answerId,
     status: "typing",
   }));
 

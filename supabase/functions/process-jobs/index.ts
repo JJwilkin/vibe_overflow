@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const MAX_JOBS_PER_RUN = 5;
 const COMMENT_PROBABILITY = 0.4;
+const MAX_BOT_COMMENTS_PER_THREAD = 3;
 
 // ── Persona definitions (mirrored from src/lib/ai/personas.ts) ──
 
@@ -269,24 +270,94 @@ async function processComment(
   job: Job,
   persona: Persona
 ) {
-  if (!job.answer_id) return;
+  // Enforce bot comment limit per thread
+  const threadFilter = job.answer_id
+    ? `comments.answer_id.eq.${job.answer_id}`
+    : `and(comments.question_id.eq.${job.question_id},comments.answer_id.is.null)`;
 
-  const { data: answer } = await supabase
-    .from("answers")
-    .select("body, users!inner(display_name)")
-    .eq("id", job.answer_id)
-    .single();
-  if (!answer) return;
+  // Count existing bot comments in this thread
+  let botCommentCount = 0;
+  if (job.answer_id) {
+    const { count } = await supabase
+      .from("comments")
+      .select("id, users!inner(is_bot)", { count: "exact", head: true })
+      .eq("answer_id", job.answer_id)
+      .eq("users.is_bot", true);
+    botCommentCount = count || 0;
+  } else {
+    const { count } = await supabase
+      .from("comments")
+      .select("id, users!inner(is_bot)", { count: "exact", head: true })
+      .eq("question_id", job.question_id)
+      .is("answer_id", null)
+      .eq("users.is_bot", true);
+    botCommentCount = count || 0;
+  }
+
+  if (botCommentCount >= MAX_BOT_COMMENTS_PER_THREAD) return;
 
   const { data: question } = await supabase
     .from("questions")
-    .select("title")
+    .select("title, body")
     .eq("id", job.question_id)
     .single();
   if (!question) return;
 
-  const userName = (answer as any).users?.display_name || "Unknown";
-  const prompt = `Question: ${question.title}\n\n[${userName}]'s answer:\n${answer.body}\n\nWrite a brief comment reacting to this answer:`;
+  let prompt: string;
+
+  if (job.answer_id) {
+    // Comment on an answer
+    const { data: answer } = await supabase
+      .from("answers")
+      .select("body, users!inner(display_name)")
+      .eq("id", job.answer_id)
+      .single();
+    if (!answer) return;
+
+    // Get existing comments on this answer for context
+    const { data: existingComments } = await supabase
+      .from("comments")
+      .select("body, users!inner(display_name)")
+      .eq("answer_id", job.answer_id)
+      .order("created_at", { ascending: true })
+      .limit(10);
+
+    const userName = (answer as any).users?.display_name || "Unknown";
+    prompt = `Question: ${question.title}\n\n[${userName}]'s answer:\n${answer.body}`;
+
+    if (existingComments && existingComments.length > 0) {
+      prompt += "\n\nExisting comments on this answer:";
+      for (const c of existingComments) {
+        const cName = (c as any).users?.display_name || "Unknown";
+        prompt += `\n- [${cName}]: ${c.body}`;
+      }
+      prompt += "\n\nWrite a brief comment responding to the conversation:";
+    } else {
+      prompt += "\n\nWrite a brief comment reacting to this answer:";
+    }
+  } else {
+    // Comment on the question itself
+    const { data: existingComments } = await supabase
+      .from("comments")
+      .select("body, users!inner(display_name)")
+      .eq("question_id", job.question_id)
+      .is("answer_id", null)
+      .order("created_at", { ascending: true })
+      .limit(10);
+
+    prompt = `Question: ${question.title}\n\n${question.body}`;
+
+    if (existingComments && existingComments.length > 0) {
+      prompt += "\n\nExisting comments on this question:";
+      for (const c of existingComments) {
+        const cName = (c as any).users?.display_name || "Unknown";
+        prompt += `\n- [${cName}]: ${c.body}`;
+      }
+      prompt += "\n\nWrite a brief comment responding to the conversation:";
+    } else {
+      prompt += "\n\nWrite a brief comment on this question:";
+    }
+  }
 
   const commentText = await callLLM(getCommentPrompt(persona), prompt, {
     temperature: 0.9,
@@ -331,10 +402,10 @@ async function maybeInflateViews(supabase: ReturnType<typeof createClient>) {
 // ── Main handler ──
 
 Deno.serve(async (req) => {
-  // Verify authorization
-  const authHeader = req.headers.get("authorization");
+  // Verify cron secret (passed as custom header to avoid gateway JWT validation)
+  const cronSecretHeader = req.headers.get("x-cron-secret");
   const cronSecret = Deno.env.get("CRON_SECRET");
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (cronSecret && cronSecretHeader !== cronSecret) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -385,7 +456,7 @@ Deno.serve(async (req) => {
       .eq("id", job.id);
 
     try {
-      if (job.job_type === "comment" && job.answer_id) {
+      if (job.job_type === "comment") {
         await processComment(supabase, job, persona);
       } else {
         await processAnswer(supabase, job, persona);

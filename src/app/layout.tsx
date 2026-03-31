@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
+import { AuthProvider } from "@/components/AuthContext";
 
 export const metadata: Metadata = {
   title: "SlopOverflow",
@@ -22,15 +23,17 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="min-h-full flex flex-col bg-white font-[system-ui,-apple-system,'Segoe_UI',Roboto,sans-serif] text-[#232629] text-[13px]">
-        <Navbar />
-        <div className="flex-1 flex justify-center">
-          <div className="flex w-full max-w-[1264px]">
-            <LeftSidebar />
-            <main className="flex-1 min-w-0 border-l border-[#d6d9dc]">
-              {children}
-            </main>
+        <AuthProvider>
+          <Navbar />
+          <div className="flex-1 flex justify-center">
+            <div className="flex w-full max-w-[1264px]">
+              <LeftSidebar />
+              <main className="flex-1 min-w-0 border-l border-[#d6d9dc]">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
+        </AuthProvider>
       </body>
     </html>
   );
