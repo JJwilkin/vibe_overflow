@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -127,4 +128,124 @@
   html {
     @apply font-sans;
   }
+}
+
+/* SlopOverflow Dark Mode — SO-style */
+html.so-dark {
+  --so-bg: #1c1d1f;
+  --so-bg-secondary: #232629;
+  --so-bg-sidebar: #1c1d1f;
+  --so-border: #3d3d3d;
+  --so-text: #d1d2d3;
+  --so-text-secondary: #9199a1;
+  --so-blue: #6bbbf7;
+  --so-orange: #f48225;
+  --so-tag-bg: #2d4a60;
+  --so-tag-text: #9fc3db;
+  --so-input-bg: #2d2d2d;
+  --so-card-bg: #2d2d2d;
+  --so-yellow-bg: #3e3a2e;
+  --so-yellow-border: #5c5324;
+  --so-green: #48a868;
+  --so-accepted-bg: #1a2a1a;
+}
+
+html.so-dark body {
+  background-color: var(--so-bg) !important;
+  color: var(--so-text) !important;
+}
+
+html.so-dark header {
+  background-color: #232629 !important;
+  border-top-color: var(--so-orange) !important;
+  border-bottom-color: var(--so-border) !important;
+}
+
+html.so-dark nav {
+  background-color: var(--so-bg) !important;
+  border-color: var(--so-border) !important;
+}
+
+html.so-dark input,
+html.so-dark textarea,
+html.so-dark select {
+  background-color: var(--so-input-bg) !important;
+  border-color: var(--so-border) !important;
+  color: var(--so-text) !important;
+}
+
+html.so-dark a {
+  color: var(--so-blue);
+}
+
+/* Dark mode overrides for specific SO colors */
+html.so-dark [class*="bg-white"],
+html.so-dark [class*="bg-[#f8f9f9]"],
+html.so-dark [class*="bg-[#f1f2f3]"] {
+  background-color: var(--so-bg-secondary) !important;
+}
+
+html.so-dark [class*="border-[#d6d9dc]"],
+html.so-dark [class*="border-[#e3e6e8]"] {
+  border-color: var(--so-border) !important;
+}
+
+html.so-dark [class*="text-[#232629]"],
+html.so-dark [class*="text-[#3b4045]"],
+html.so-dark [class*="text-[#0c0d0e]"] {
+  color: var(--so-text) !important;
+}
+
+html.so-dark [class*="text-[#6a737c]"],
+html.so-dark [class*="text-[#838c95]"],
+html.so-dark [class*="text-[#525960]"],
+html.so-dark [class*="text-[#9199a1]"] {
+  color: var(--so-text-secondary) !important;
+}
+
+html.so-dark [class*="text-[#0074cc]"] {
+  color: var(--so-blue) !important;
+}
+
+html.so-dark [class*="bg-[#e1ecf4]"] {
+  background-color: var(--so-tag-bg) !important;
+}
+
+html.so-dark [class*="text-[#39739d]"] {
+  color: var(--so-tag-text) !important;
+}
+
+html.so-dark [class*="bg-[#d9eaf7]"] {
+  background-color: #2d3a47 !important;
+}
+
+html.so-dark [class*="bg-[#fdf7e2]"],
+html.so-dark [class*="bg-[#fbf3d5]"] {
+  background-color: var(--so-yellow-bg) !important;
+}
+
+html.so-dark [class*="border-[#f1e5bc]"] {
+  border-color: var(--so-yellow-border) !important;
+}
+
+html.so-dark [class*="bg-[#ebf4fb]"] {
+  background-color: #1e2f3d !important;
+}
+
+html.so-dark [class*="bg-[#f1f2f3]"] {
+  background-color: var(--so-bg-secondary) !important;
+}
+
+html.so-dark .prose {
+  color: var(--so-text) !important;
+}
+
+html.so-dark .prose pre {
+  background-color: #1e1e1e !important;
+  border-color: var(--so-border) !important;
+}
+
+html.so-dark .prose code {
+  background-color: #3d3d3d !important;
+  color: var(--so-text) !important;
 }
