@@ -100,7 +100,7 @@ export async function enqueueCommentReplies(
   const selected = pickRandomPersonas(count);
 
   for (const persona of selected) {
-    const delaySec = 30 + Math.floor(Math.random() * 180); // 30-210s
+    const delaySec = 3 + Math.floor(Math.random() * 10); // 3-13s
     await db.insert(schema.aiJobs).values({
       questionId,
       answerId: answerId ?? undefined,
@@ -121,7 +121,7 @@ export async function enqueueMentionReply(
 ) {
   if (process.env.AI_ENABLED === "false") return;
 
-  const delaySec = 15 + Math.floor(Math.random() * 60); // 15-75s (faster for mentions)
+  const delaySec = 2 + Math.floor(Math.random() * 5); // 2-7s
   await db.insert(schema.aiJobs).values({
     questionId,
     answerId: answerId ?? undefined,
