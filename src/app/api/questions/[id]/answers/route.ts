@@ -25,6 +25,13 @@ export async function POST(
     );
   }
 
+  if (body.trim().length > 30000) {
+    return NextResponse.json(
+      { error: "Answer must be under 30,000 characters" },
+      { status: 400 }
+    );
+  }
+
   const [answer] = await db
     .insert(schema.answers)
     .values({

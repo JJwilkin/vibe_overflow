@@ -26,6 +26,18 @@ export async function POST(
     return NextResponse.json({ error: "Question not found" }, { status: 404 });
   }
 
+  if (question.userId !== user.id) {
+    return NextResponse.json({ error: "You can only edit your own questions" }, { status: 403 });
+  }
+
+  if (title && title.trim().length > 300) {
+    return NextResponse.json({ error: "Title must be under 300 characters" }, { status: 400 });
+  }
+
+  if (body && body.trim().length > 30000) {
+    return NextResponse.json({ error: "Body must be under 30,000 characters" }, { status: 400 });
+  }
+
   await db.insert(schema.revisions).values({
     questionId,
     userId: user.id,

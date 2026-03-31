@@ -11,13 +11,28 @@ interface HotQuestion {
   answerCount: number;
 }
 
+interface Tag {
+  name: string;
+  questionCount: number;
+}
+
 export default function RightSidebar() {
   const [hotQuestions, setHotQuestions] = useState<HotQuestion[]>([]);
+  const [popularTags, setPopularTags] = useState<Tag[]>([]);
 
   useEffect(() => {
     fetch("/api/questions/hot")
       .then((r) => r.json())
       .then((data) => setHotQuestions(data))
+      .catch(() => {});
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((data) => {
+        const sorted = (data.tags || [])
+          .sort((a: Tag, b: Tag) => b.questionCount - a.questionCount)
+          .slice(0, 8);
+        setPopularTags(sorted);
+      })
       .catch(() => {});
   }, []);
 
@@ -93,16 +108,10 @@ export default function RightSidebar() {
           Popular Tags
         </div>
         <div className="px-4 py-3 flex flex-wrap gap-1">
-          {[
-            "javascript",
-            "python",
-            "react",
-            "typescript",
-            "node.js",
-            "css",
-            "sql",
-            "git",
-          ].map((tag) => (
+          {(popularTags.length > 0
+            ? popularTags.map((t) => t.name)
+            : ["javascript", "python", "react", "typescript", "node.js", "css", "sql", "git"]
+          ).map((tag) => (
             <TagBadge key={tag} name={tag} />
           ))}
         </div>

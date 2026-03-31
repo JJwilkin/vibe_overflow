@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import Navbar from "@/components/Navbar";
 import LeftSidebar from "@/components/LeftSidebar";
 import { AuthProvider } from "@/components/AuthContext";
@@ -77,6 +78,7 @@ export default function RootLayout({
             </div>
           </div>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );

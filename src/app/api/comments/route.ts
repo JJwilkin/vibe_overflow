@@ -21,6 +21,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (body.trim().length > 600) {
+    return NextResponse.json(
+      { error: "Comments must be under 600 characters" },
+      { status: 400 }
+    );
+  }
+
   if (!questionId && !answerId) {
     return NextResponse.json(
       { error: "Must specify questionId or answerId" },

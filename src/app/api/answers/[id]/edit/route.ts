@@ -33,6 +33,14 @@ export async function POST(
     return NextResponse.json({ error: "Answer not found" }, { status: 404 });
   }
 
+  if (answer.userId !== user.id) {
+    return NextResponse.json({ error: "You can only edit your own answers" }, { status: 403 });
+  }
+
+  if (body.trim().length > 30000) {
+    return NextResponse.json({ error: "Body must be under 30,000 characters" }, { status: 400 });
+  }
+
   await db.insert(schema.revisions).values({
     answerId,
     userId: user.id,

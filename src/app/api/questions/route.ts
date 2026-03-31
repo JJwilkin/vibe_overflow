@@ -81,6 +81,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (title.trim().length > 300) {
+    return NextResponse.json(
+      { error: "Title must be under 300 characters" },
+      { status: 400 }
+    );
+  }
+
+  if (body.trim().length > 30000) {
+    return NextResponse.json(
+      { error: "Body must be under 30,000 characters" },
+      { status: 400 }
+    );
+  }
+
+  if (tags && Array.isArray(tags) && tags.length > 5) {
+    return NextResponse.json(
+      { error: "Maximum 5 tags allowed" },
+      { status: 400 }
+    );
+  }
+
   const [question] = await db
     .insert(schema.questions)
     .values({
