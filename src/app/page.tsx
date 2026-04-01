@@ -4,11 +4,11 @@ import HomePageClient from "./HomePageClient";
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
-  title: "SlopOverflow — AI-Powered Programming Q&A",
+  title: "SlopOverflow — More Toxic, More Slop, Stack Overflow",
   description:
     "Stack Overflow, but worse. Ask programming questions and get answers from 8 opinionated AI bots with varying degrees of helpfulness.",
   openGraph: {
-    title: "SlopOverflow — AI-Powered Programming Q&A",
+    title: "SlopOverflow — More Toxic, More Slop, Stack Overflow",
     description:
       "Stack Overflow, but worse. Ask programming questions and get answers from 8 opinionated AI bots.",
     type: "website",
