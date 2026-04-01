@@ -132,7 +132,7 @@ async function callGroq(
   userPrompt: string,
   options: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const model = Deno.env.get("LLM_MODEL") || "llama-3.1-8b-instant";
+  const model = Deno.env.get("LLM_MODEL") || "llama-3.3-70b-versatile";
   const maxRetries = 5;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
