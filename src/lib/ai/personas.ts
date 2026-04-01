@@ -34,7 +34,7 @@ export const personas: Persona[] = [
       domains: ["enterprise", "microservices", "distributed systems"],
       techAffinities: ["Java", "Spring Boot", "Kubernetes", "gRPC"],
     },
-    questionInterval: [8, 14],
+    questionInterval: [2, 4],
   },
   {
     id: "duplicate_dave",
@@ -50,7 +50,7 @@ export const personas: Persona[] = [
       domains: ["search", "indexing", "deduplication"],
       techAffinities: ["Elasticsearch", "Python", "Redis"],
     },
-    questionInterval: [10, 16],
+    questionInterval: [2, 4],
   },
   {
     id: "verbose_vanessa",
@@ -66,7 +66,7 @@ export const personas: Persona[] = [
       domains: ["documentation", "frameworks", "full-stack apps"],
       techAffinities: ["React", "Node.js", "GraphQL", "PostgreSQL"],
     },
-    questionInterval: [5, 8],
+    questionInterval: [1, 3],
   },
   {
     id: "snarky_sam",
@@ -82,7 +82,7 @@ export const personas: Persona[] = [
       domains: ["CLI tools", "scripts", "automation"],
       techAffinities: ["Go", "Bash", "Rust"],
     },
-    questionInterval: [3, 6],
+    questionInterval: [1, 2],
   },
   {
     id: "actually_alice",
@@ -98,7 +98,7 @@ export const personas: Persona[] = [
       domains: ["type-safe libraries", "parsers", "spec-compliant tools"],
       techAffinities: ["TypeScript", "Rust", "Haskell", "Zod"],
     },
-    questionInterval: [6, 10],
+    questionInterval: [1, 3],
   },
   {
     id: "helpful_helen",
@@ -114,7 +114,7 @@ export const personas: Persona[] = [
       domains: ["open-source", "community tools", "educational"],
       techAffinities: ["React", "Python", "Node.js", "Tailwind CSS"],
     },
-    questionInterval: [6, 10],
+    questionInterval: [1, 3],
   },
   {
     id: "passive_pete",
@@ -130,7 +130,7 @@ export const personas: Persona[] = [
       domains: ["internal tools", "dashboards", "admin panels"],
       techAffinities: ["PHP", "Laravel", "Vue", "MySQL"],
     },
-    questionInterval: [8, 12],
+    questionInterval: [2, 4],
   },
   {
     id: "outdated_oscar",
@@ -146,7 +146,7 @@ export const personas: Persona[] = [
       domains: ["jQuery plugins", "PHP apps", "legacy migrations"],
       techAffinities: ["jQuery", "PHP", "Backbone.js", "Grunt"],
     },
-    questionInterval: [12, 24],
+    questionInterval: [3, 5],
   },
 ];
 

@@ -34,11 +34,11 @@ export async function checkAndInitProjects() {
     (p) => !activePersonaIds.includes(p.id) && !pendingPersonaIds.includes(p.id)
   );
 
-  // Stagger jobs 1-4h apart
+  // Stagger jobs 2-5 minutes apart
   for (let i = 0; i < needsProject.length; i++) {
     const persona = needsProject[i];
-    const delayHours = 1 + Math.random() * 3; // 1-4h
-    const scheduledFor = new Date(Date.now() + delayHours * i * 60 * 60 * 1000);
+    const delayMinutes = (2 + Math.random() * 3) * (i + 1); // 2-5 min per bot
+    const scheduledFor = new Date(Date.now() + delayMinutes * 60 * 1000);
 
     await db.insert(schema.aiJobs).values({
       jobType: "generate_project",
