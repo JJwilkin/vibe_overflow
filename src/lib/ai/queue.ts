@@ -112,6 +112,32 @@ export async function enqueueCommentReplies(
 }
 
 /**
+ * Enqueue 1-2 bot comments on a newly posted answer.
+ * Called when any user (human or bot) posts an answer.
+ */
+export async function enqueueAnswerComments(
+  questionId: number,
+  answerId: number,
+  excludePersonaId?: string,
+) {
+  if (process.env.AI_ENABLED === "false") return;
+
+  const count = Math.floor(Math.random() * 2) + 1; // 1-2 comments
+  const selected = pickRandomPersonas(count, excludePersonaId);
+
+  for (const persona of selected) {
+    const delaySec = 10 + Math.floor(Math.random() * 30); // 10-40s after answer
+    await db.insert(schema.aiJobs).values({
+      questionId,
+      answerId,
+      jobType: "comment",
+      personaId: persona.id,
+      scheduledFor: new Date(Date.now() + delaySec * 1000),
+    });
+  }
+}
+
+/**
  * Enqueue a mention-triggered bot reply. Bypasses the per-thread comment limit.
  */
 export async function enqueueMentionReply(

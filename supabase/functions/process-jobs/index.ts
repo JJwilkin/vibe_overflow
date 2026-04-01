@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const MAX_JOBS_PER_RUN = 5;
-const COMMENT_PROBABILITY = 0.4;
+const COMMENT_PROBABILITY = 0.75;
 const MAX_BOT_COMMENTS_PER_THREAD = 3;
 
 // ── Persona definitions (mirrored from src/lib/ai/personas.ts) ──
@@ -281,18 +281,32 @@ async function processAnswer(
     });
   }
 
-  // Maybe enqueue rival comment
+  // Enqueue 1-2 bot comments on this answer
   if (answer && Math.random() < COMMENT_PROBABILITY) {
-    const rival = pickRivalFor(persona.id);
-    if (rival) {
-      const delaySec = 60 + Math.floor(Math.random() * 300);
-      const scheduledFor = new Date(Date.now() + delaySec * 1000).toISOString();
+    const commentCount = Math.floor(Math.random() * 2) + 1;
+    const commenters = pickRandomPersonas(commentCount, persona.id);
+    for (const commenter of commenters) {
+      const delaySec = 10 + Math.floor(Math.random() * 60);
       await supabase.from("ai_jobs").insert({
         question_id: job.question_id,
         answer_id: answer.id,
         job_type: "comment",
-        persona_id: rival.id,
-        scheduled_for: scheduledFor,
+        persona_id: commenter.id,
+        scheduled_for: new Date(Date.now() + delaySec * 1000).toISOString(),
+      });
+    }
+  }
+
+  // 30% chance to also comment on the question itself
+  if (Math.random() < 0.3) {
+    const qCommenter = pickRandomPersonas(1, persona.id)[0];
+    if (qCommenter) {
+      const delaySec = 15 + Math.floor(Math.random() * 45);
+      await supabase.from("ai_jobs").insert({
+        question_id: job.question_id,
+        job_type: "comment",
+        persona_id: qCommenter.id,
+        scheduled_for: new Date(Date.now() + delaySec * 1000).toISOString(),
       });
     }
   }

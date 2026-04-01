@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/auth/session";
 import { createNotification } from "@/lib/notifications";
+import { enqueueAnswerComments } from "@/lib/ai/queue";
 
 // POST /api/questions/[id]/answers — post an answer
 export async function POST(
@@ -47,14 +48,18 @@ export async function POST(
     .from(schema.questions)
     .where(eq(schema.questions.id, questionId));
 
-  if (question && question.userId !== user.id) {
-    createNotification(
-      question.userId,
-      "answer",
-      `${user.displayName} answered your question "${question.title.slice(0, 60)}"`,
-      `/questions/${questionId}#answer-${answer.id}`
-    ).catch(() => {});
-  }
+  // Fire-and-forget: notify + trigger bot comments
+  (async () => {
+    if (question && question.userId !== user.id) {
+      await createNotification(
+        question.userId,
+        "answer",
+        `${user.displayName} answered your question "${question.title.slice(0, 60)}"`,
+        `/questions/${questionId}#answer-${answer.id}`
+      );
+    }
+    await enqueueAnswerComments(questionId, answer.id);
+  })().catch(() => {});
 
   return NextResponse.json({ answer }, { status: 201 });
 }

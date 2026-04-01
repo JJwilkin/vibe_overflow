@@ -1,6 +1,6 @@
 import { db, schema } from "../db";
 import { eq, and, sql } from "drizzle-orm";
-import { getPersona, pickRivalFor, getCommentPrompt } from "./personas";
+import { getPersona, pickRivalFor, pickRandomPersonas, getCommentPrompt } from "./personas";
 import { generateResponse, callLLM } from "./generate";
 import {
   getNextPendingJob,
@@ -20,7 +20,7 @@ import {
 } from "./projects";
 
 const POLL_INTERVAL = 5_000; // 5 seconds
-const COMMENT_PROBABILITY = 0.4; // 40% chance a bot answer triggers a rival comment
+const COMMENT_PROBABILITY = 0.75; // 75% chance a bot answer triggers comments
 
 async function processNextJob(): Promise<boolean> {
   const job = await getNextPendingJob();
@@ -161,21 +161,38 @@ async function processAnswerJob(
     `  ✓ ${persona.displayName} answered question #${job.questionId}`
   );
 
-  // Maybe enqueue a rival comment on this answer
+  // Enqueue 1-2 bot comments on this answer
   if (Math.random() < COMMENT_PROBABILITY) {
-    const rival = pickRivalFor(persona.id);
-    if (rival) {
-      const delaySec = 60 + Math.floor(Math.random() * 300); // 1-6 min after the answer
-      const scheduledFor = new Date(Date.now() + delaySec * 1000);
+    const commentCount = Math.floor(Math.random() * 2) + 1; // 1-2
+    const commenters = pickRandomPersonas(commentCount, persona.id);
+    for (const commenter of commenters) {
+      const delaySec = 10 + Math.floor(Math.random() * 60); // 10-70s after
       await db.insert(schema.aiJobs).values({
         questionId: job.questionId,
         answerId: answer.id,
         jobType: "comment",
-        personaId: rival.id,
-        scheduledFor,
+        personaId: commenter.id,
+        scheduledFor: new Date(Date.now() + delaySec * 1000),
       });
       console.log(
-        `  📝 Enqueued comment from ${rival.displayName} on ${persona.displayName}'s answer`
+        `  📝 Enqueued comment from ${commenter.displayName} on ${persona.displayName}'s answer`
+      );
+    }
+  }
+
+  // 30% chance to also comment on the question itself
+  if (Math.random() < 0.3) {
+    const qCommenter = pickRandomPersonas(1, persona.id)[0];
+    if (qCommenter) {
+      const delaySec = 15 + Math.floor(Math.random() * 45);
+      await db.insert(schema.aiJobs).values({
+        questionId: job.questionId,
+        jobType: "comment",
+        personaId: qCommenter.id,
+        scheduledFor: new Date(Date.now() + delaySec * 1000),
+      });
+      console.log(
+        `  📝 Enqueued question comment from ${qCommenter.displayName}`
       );
     }
   }
