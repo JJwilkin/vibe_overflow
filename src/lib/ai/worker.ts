@@ -316,8 +316,8 @@ async function processProjectGenerationJob(
     `  ✓ ${persona.displayName} started project: "${parsed.projectName}"`
   );
 
-  // Enqueue the first question
-  await enqueueNextQuestion(persona.id);
+  // Enqueue the first question immediately
+  await enqueueNextQuestion(persona.id, true);
 }
 
 async function processQuestionGenerationJob(

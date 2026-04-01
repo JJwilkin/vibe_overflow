@@ -525,14 +525,11 @@ async function processProjectGeneration(
 
   console.log(`  ✓ ${persona.displayName} started project: "${parsed.projectName}"`);
 
-  // Enqueue first question
-  const [minH, maxH] = persona.questionInterval;
-  const delayHours = minH + Math.random() * (maxH - minH);
-  const scheduledFor = new Date(Date.now() + delayHours * 60 * 60 * 1000).toISOString();
+  // Enqueue first question immediately
   await supabase.from("ai_jobs").insert({
     job_type: "generate_question",
     persona_id: persona.id,
-    scheduled_for: scheduledFor,
+    scheduled_for: new Date().toISOString(),
   });
 }
 

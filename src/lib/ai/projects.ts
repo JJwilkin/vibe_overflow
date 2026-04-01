@@ -52,14 +52,20 @@ export async function checkAndInitProjects() {
 
 /**
  * Enqueue the next question for a persona based on their questionInterval.
+ * Pass immediate=true for the first question after project creation.
  */
-export async function enqueueNextQuestion(personaId: string) {
+export async function enqueueNextQuestion(personaId: string, immediate = false) {
   const persona = getPersona(personaId);
   if (!persona) return;
 
-  const [minH, maxH] = persona.questionInterval;
-  const delayHours = minH + Math.random() * (maxH - minH);
-  const scheduledFor = new Date(Date.now() + delayHours * 60 * 60 * 1000);
+  let scheduledFor: Date;
+  if (immediate) {
+    scheduledFor = new Date();
+  } else {
+    const [minH, maxH] = persona.questionInterval;
+    const delayHours = minH + Math.random() * (maxH - minH);
+    scheduledFor = new Date(Date.now() + delayHours * 60 * 60 * 1000);
+  }
 
   await db.insert(schema.aiJobs).values({
     jobType: "generate_question",
