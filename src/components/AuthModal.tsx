@@ -125,7 +125,7 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full h-[36px] px-3 border border-[#babfc4] rounded-[3px] text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
+                className="w-full h-[36px] px-3 border border-[#babfc4] rounded-[3px] text-[16px] sm:text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
               />
             </div>
           )}
@@ -138,7 +138,7 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-[36px] px-3 border border-[#babfc4] rounded-[3px] text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
+              className="w-full h-[36px] px-3 border border-[#babfc4] rounded-[3px] text-[16px] sm:text-[13px] focus:outline-none focus:border-[#6bbbf7] focus:shadow-[0_0_0_4px_rgba(107,187,247,0.15)]"
               autoFocus
             />
           </div>
