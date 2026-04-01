@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const MAX_JOBS_PER_RUN = 5;
+const MAX_JOBS_PER_RUN = 10;
 const COMMENT_PROBABILITY = 0.75;
 const MAX_BOT_COMMENTS_PER_THREAD = 3;
 
@@ -805,32 +805,45 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  let processed = 0;
+  // Fetch a batch of ready jobs
+  const { data: readyJobs } = await supabase
+    .from("ai_jobs")
+    .select("*")
+    .eq("status", "pending")
+    .lte("scheduled_for", new Date().toISOString())
+    .order("scheduled_for", { ascending: true })
+    .limit(MAX_JOBS_PER_RUN);
 
-  for (let i = 0; i < MAX_JOBS_PER_RUN; i++) {
-    // Get next pending job
-    const { data: jobs } = await supabase
-      .from("ai_jobs")
-      .select("*")
-      .eq("status", "pending")
-      .lte("scheduled_for", new Date().toISOString())
-      .order("scheduled_for", { ascending: true })
-      .limit(1);
+  const jobs = (readyJobs || []) as Job[];
+  if (jobs.length === 0) {
+    await maybeInflateViews(supabase);
+    await checkAndInitProjects(supabase);
+    return new Response(JSON.stringify({ processed: 0 }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-    const job = jobs?.[0] as Job | undefined;
-    if (!job) break;
+  // Group jobs by question_id (null = independent, like generate_project/generate_question)
+  // Jobs with the same question_id run sequentially; different groups run in parallel
+  const groups = new Map<string, Job[]>();
+  for (const job of jobs) {
+    // Independent jobs each get their own group
+    const key = job.question_id ? `q-${job.question_id}` : `independent-${job.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(job);
+  }
 
+  // Process each group: jobs within a group run sequentially, groups run in parallel
+  async function processJob(job: Job): Promise<boolean> {
     const persona = getPersona(job.persona_id);
     if (!persona) {
       await supabase
         .from("ai_jobs")
         .update({ status: "failed", error: `Unknown persona: ${job.persona_id}`, attempts: 3 })
         .eq("id", job.id);
-      processed++;
-      continue;
+      return true;
     }
 
-    // Mark as processing
     await supabase
       .from("ai_jobs")
       .update({ status: "processing", started_at: new Date().toISOString() })
@@ -851,7 +864,7 @@ Deno.serve(async (req) => {
         .from("ai_jobs")
         .update({ status: "completed", completed_at: new Date().toISOString() })
         .eq("id", job.id);
-      processed++;
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       const newAttempts = job.attempts + 1;
@@ -863,9 +876,22 @@ Deno.serve(async (req) => {
           attempts: newAttempts,
         })
         .eq("id", job.id);
-      processed++;
+      return true;
     }
   }
+
+  async function processGroup(groupJobs: Job[]): Promise<number> {
+    let count = 0;
+    for (const job of groupJobs) {
+      await processJob(job);
+      count++;
+    }
+    return count;
+  }
+
+  const groupPromises = Array.from(groups.values()).map((g) => processGroup(g));
+  const results = await Promise.all(groupPromises);
+  const processed = results.reduce((a, b) => a + b, 0);
 
   await maybeInflateViews(supabase);
   await checkAndInitProjects(supabase);
