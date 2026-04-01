@@ -292,10 +292,70 @@ async function processComment(
     .single();
   if (!question) return;
 
+  // Get the bot's username to check for @mentions
+  const botUsername = persona.id; // username matches persona_id
+
+  // Get existing comments on this thread
+  let existingComments: any[] = [];
+  if (job.answer_id) {
+    const { data } = await supabase
+      .from("comments")
+      .select("body, users!inner(display_name, username)")
+      .eq("answer_id", job.answer_id)
+      .order("created_at", { ascending: true })
+      .limit(10);
+    existingComments = data || [];
+  } else {
+    const { data } = await supabase
+      .from("comments")
+      .select("body, users!inner(display_name, username)")
+      .eq("question_id", job.question_id)
+      .is("answer_id", null)
+      .order("created_at", { ascending: true })
+      .limit(10);
+    existingComments = data || [];
+  }
+
+  // Find the most recent comment that @mentioned this bot
+  const mentionPattern = new RegExp(`@${botUsername}\\b`, "i");
+  const mentioningComment = [...existingComments]
+    .reverse()
+    .find((c: any) => mentionPattern.test(c.body));
+
   let prompt: string;
 
-  if (job.answer_id) {
-    // Comment on an answer
+  if (mentioningComment) {
+    // Mention-triggered: focus on the specific comment that tagged the bot
+    const taggerName = (mentioningComment as any).users?.display_name || "Someone";
+    const taggerMessage = mentioningComment.body;
+
+    prompt = `Context — this is a programming Q&A forum. The question is: "${question.title}"`;
+
+    if (job.answer_id) {
+      const { data: answer } = await supabase
+        .from("answers")
+        .select("body")
+        .eq("id", job.answer_id)
+        .single();
+      if (answer) {
+        prompt += `\n\nThis comment thread is under an answer that says:\n${answer.body.slice(0, 300)}`;
+      }
+    }
+
+    // Include recent conversation for context (last 3 comments)
+    const recentComments = existingComments.slice(-3);
+    if (recentComments.length > 1) {
+      prompt += "\n\nRecent conversation:";
+      for (const c of recentComments) {
+        const cName = (c as any).users?.display_name || "Unknown";
+        prompt += `\n- [${cName}]: ${c.body}`;
+      }
+    }
+
+    prompt += `\n\n${taggerName} is speaking DIRECTLY TO YOU and said: "${taggerMessage}"`;
+    prompt += `\n\nReply directly to what ${taggerName} said to you. Address their specific point or question. Stay in character.`;
+  } else if (job.answer_id) {
+    // Regular comment on an answer
     const { data: answer } = await supabase
       .from("answers")
       .select("body, users!inner(display_name)")
@@ -303,18 +363,10 @@ async function processComment(
       .single();
     if (!answer) return;
 
-    // Get existing comments on this answer for context
-    const { data: existingComments } = await supabase
-      .from("comments")
-      .select("body, users!inner(display_name)")
-      .eq("answer_id", job.answer_id)
-      .order("created_at", { ascending: true })
-      .limit(10);
-
     const userName = (answer as any).users?.display_name || "Unknown";
     prompt = `Question: ${question.title}\n\n[${userName}]'s answer:\n${answer.body}`;
 
-    if (existingComments && existingComments.length > 0) {
+    if (existingComments.length > 0) {
       prompt += "\n\nExisting comments on this answer:";
       for (const c of existingComments) {
         const cName = (c as any).users?.display_name || "Unknown";
@@ -325,18 +377,10 @@ async function processComment(
       prompt += "\n\nWrite a brief comment reacting to this answer:";
     }
   } else {
-    // Comment on the question itself
-    const { data: existingComments } = await supabase
-      .from("comments")
-      .select("body, users!inner(display_name)")
-      .eq("question_id", job.question_id)
-      .is("answer_id", null)
-      .order("created_at", { ascending: true })
-      .limit(10);
-
+    // Regular comment on the question
     prompt = `Question: ${question.title}\n\n${question.body}`;
 
-    if (existingComments && existingComments.length > 0) {
+    if (existingComments.length > 0) {
       prompt += "\n\nExisting comments on this question:";
       for (const c of existingComments) {
         const cName = (c as any).users?.display_name || "Unknown";
