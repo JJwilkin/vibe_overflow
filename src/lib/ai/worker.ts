@@ -1,5 +1,5 @@
 import { db, schema } from "../db";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getPersona, pickRivalFor, getCommentPrompt } from "./personas";
 import { generateResponse, callLLM } from "./generate";
 import {
@@ -8,6 +8,16 @@ import {
   markJobCompleted,
   markJobFailed,
 } from "./queue";
+import {
+  checkAndInitProjects,
+  enqueueNextQuestion,
+  buildProjectIdeationPrompt,
+  buildQuestionPrompt,
+  insertBotQuestion,
+  shouldCompleteProject,
+  completeProject,
+  getPreviousQuestionTitles,
+} from "./projects";
 
 const POLL_INTERVAL = 5_000; // 5 seconds
 const COMMENT_PROBABILITY = 0.4; // 40% chance a bot answer triggers a rival comment
@@ -25,7 +35,11 @@ async function processNextJob(): Promise<boolean> {
   await markJobProcessing(job.id);
 
   try {
-    if (job.jobType === "comment") {
+    if (job.jobType === "generate_project") {
+      await processProjectGenerationJob(job, persona);
+    } else if (job.jobType === "generate_question") {
+      await processQuestionGenerationJob(job, persona);
+    } else if (job.jobType === "comment") {
       await processCommentJob(job, persona);
     } else {
       await processAnswerJob(job, persona);
@@ -43,9 +57,13 @@ async function processNextJob(): Promise<boolean> {
 }
 
 async function processAnswerJob(
-  job: { id: number; questionId: number; personaId: string; attempts: number },
+  job: { id: number; questionId: number | null; personaId: string; attempts: number },
   persona: ReturnType<typeof getPersona> & {}
 ) {
+  if (!job.questionId) {
+    await markJobFailed(job.id, "Answer job missing questionId", 3);
+    return;
+  }
   const [question] = await db
     .select()
     .from(schema.questions)
@@ -164,9 +182,13 @@ async function processAnswerJob(
 }
 
 async function processCommentJob(
-  job: { id: number; questionId: number; answerId?: number | null; personaId: string; attempts: number },
+  job: { id: number; questionId: number | null; answerId?: number | null; personaId: string; attempts: number },
   persona: ReturnType<typeof getPersona> & {}
 ) {
+  if (!job.questionId) {
+    await markJobFailed(job.id, "Comment job missing questionId", 3);
+    return;
+  }
   if (!job.answerId) {
     await markJobFailed(job.id, "Comment job missing answerId", 3);
     return;
@@ -229,6 +251,192 @@ async function processCommentJob(
   console.log(
     `  ✓ ${persona.displayName} commented on answer #${job.answerId}`
   );
+}
+
+async function processProjectGenerationJob(
+  job: { id: number; personaId: string; attempts: number },
+  persona: ReturnType<typeof getPersona> & {}
+) {
+  console.log(`  🏗️ Generating side project for ${persona.displayName}...`);
+
+  // Check if there's a previous completed project for continuity
+  const [prevProject] = await db
+    .select({ projectName: schema.botProjects.projectName })
+    .from(schema.botProjects)
+    .where(
+      and(
+        eq(schema.botProjects.personaId, persona.id),
+        eq(schema.botProjects.status, "completed")
+      )
+    )
+    .limit(1);
+
+  const { system, user } = buildProjectIdeationPrompt(
+    persona,
+    prevProject?.projectName
+  );
+
+  const response = await callLLM(system, user, {
+    temperature: 0.9,
+    maxTokens: 500,
+  });
+
+  // Parse JSON from the LLM response
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("LLM did not return valid JSON for project ideation");
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed.projectName || !parsed.projectDescription) {
+    throw new Error("LLM response missing required project fields");
+  }
+
+  const techStack = Array.isArray(parsed.techStack)
+    ? parsed.techStack.join(", ")
+    : String(parsed.techStack || "");
+
+  const initialState = JSON.stringify({
+    phase: parsed.initialPhase || "getting started",
+    recentWork: "Just started the project",
+    blockers: [],
+    questionsAsked: [],
+  });
+
+  await db.insert(schema.botProjects).values({
+    personaId: persona.id,
+    projectName: parsed.projectName,
+    projectDescription: parsed.projectDescription,
+    techStack,
+    projectState: initialState,
+  });
+
+  await markJobCompleted(job.id);
+  console.log(
+    `  ✓ ${persona.displayName} started project: "${parsed.projectName}"`
+  );
+
+  // Enqueue the first question
+  await enqueueNextQuestion(persona.id);
+}
+
+async function processQuestionGenerationJob(
+  job: { id: number; personaId: string; attempts: number },
+  persona: ReturnType<typeof getPersona> & {}
+) {
+  // Load active project
+  const [project] = await db
+    .select()
+    .from(schema.botProjects)
+    .where(
+      and(
+        eq(schema.botProjects.personaId, persona.id),
+        eq(schema.botProjects.status, "active")
+      )
+    )
+    .limit(1);
+
+  if (!project) {
+    await markJobFailed(job.id, "No active project for persona", 3);
+    return;
+  }
+
+  // Get the bot user
+  const [botUser] = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.personaId, persona.id));
+
+  if (!botUser) {
+    await markJobFailed(job.id, `Bot user not found for persona: ${persona.id}`, 3);
+    return;
+  }
+
+  const previousTitles = await getPreviousQuestionTitles(
+    botUser.id,
+    project.createdAt
+  );
+
+  console.log(
+    `  ❓ Generating question as ${persona.displayName} for project "${project.projectName}"...`
+  );
+
+  const { system, user } = buildQuestionPrompt(persona, project, previousTitles);
+
+  const response = await callLLM(system, user, {
+    temperature: 0.8,
+    maxTokens: 1500,
+  });
+
+  // Parse JSON
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("LLM did not return valid JSON for question generation");
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed.title || !parsed.body) {
+    throw new Error("LLM response missing title or body");
+  }
+
+  const tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+
+  // Insert the question
+  const questionId = await insertBotQuestion(
+    botUser.id,
+    persona.id,
+    parsed.title,
+    parsed.body,
+    tags
+  );
+
+  // Update project state
+  const updatedState = parsed.updatedState || {};
+  const currentState = JSON.parse(project.projectState || "{}");
+  const questionsSummary = currentState.questionsAsked || [];
+  questionsSummary.push({ id: questionId, title: parsed.title });
+  // Keep only last 5 question summaries to prevent state bloat
+  const trimmedSummary = questionsSummary.slice(-5);
+
+  const newState = JSON.stringify({
+    phase: updatedState.phase || currentState.phase,
+    recentWork: updatedState.recentWork || currentState.recentWork,
+    blockers: updatedState.blockers || [],
+    questionsAsked: trimmedSummary,
+  });
+
+  const newQuestionsAsked = project.questionsAsked + 1;
+
+  await db
+    .update(schema.botProjects)
+    .set({
+      projectState: newState,
+      questionsAsked: newQuestionsAsked,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.botProjects.id, project.id));
+
+  await markJobCompleted(job.id);
+  console.log(
+    `  ✓ ${persona.displayName} asked: "${parsed.title}" (question #${questionId})`
+  );
+
+  // Check if project should be completed
+  const llmSignaledComplete = parsed.projectComplete === true;
+  if (
+    shouldCompleteProject(
+      { questionsAsked: newQuestionsAsked, maxQuestions: project.maxQuestions, createdAt: project.createdAt },
+      llmSignaledComplete
+    )
+  ) {
+    await completeProject(project.id);
+    console.log(
+      `  🏁 ${persona.displayName} completed project: "${project.projectName}"`
+    );
+    // Auto-init will pick up the rotation on next cron tick
+  } else {
+    await enqueueNextQuestion(persona.id);
+  }
 }
 
 function getCloseVoteChance(personaId: string): number {
@@ -295,6 +503,7 @@ async function pollLoop() {
         processed = await processNextJob();
       }
       await inflateViews();
+      await checkAndInitProjects();
     } catch (error) {
       console.error("Worker error:", error);
     }

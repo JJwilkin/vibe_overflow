@@ -164,10 +164,23 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const botProjects = pgTable("bot_projects", {
+  id: serial("id").primaryKey(),
+  personaId: text("persona_id").notNull().unique(),
+  projectName: text("project_name").notNull(),
+  projectDescription: text("project_description").notNull(),
+  techStack: text("tech_stack").notNull(),
+  projectState: text("project_state").notNull().default("{}"),
+  questionsAsked: integer("questions_asked").notNull().default(0),
+  maxQuestions: integer("max_questions").notNull().default(12),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const aiJobs = pgTable("ai_jobs", {
   id: serial("id").primaryKey(),
   questionId: integer("question_id")
-    .notNull()
     .references(() => questions.id),
   answerId: integer("answer_id").references(() => answers.id),
   jobType: text("job_type").notNull().default("answer"),

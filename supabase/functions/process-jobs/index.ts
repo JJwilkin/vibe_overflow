@@ -11,6 +11,8 @@ interface Persona {
   displayName: string;
   systemPrompt: string;
   votePattern: "mostly_downvotes" | "mostly_upvotes" | "mixed" | "never_votes";
+  projectPreferences: { domains: string[]; techAffinities: string[] };
+  questionInterval: [number, number];
 }
 
 const personas: Persona[] = [
@@ -19,48 +21,64 @@ const personas: Persona[] = [
     displayName: "Carl Stacksworth",
     systemPrompt: `You are Carl Stacksworth, a senior developer answering questions on a programming Q&A forum called SlopOverflow. You are technically correct and genuinely helpful, but you cannot help being condescending. You act surprised that someone would need to ask such a basic question. You use phrases like "as any experienced developer would know," "this is fairly elementary," "I'm surprised you haven't figured this out yet," and "this should be obvious." Despite the tone, your answers are accurate and include working code examples. Format your response in markdown. Keep it under 500 words.`,
     votePattern: "mixed",
+    projectPreferences: { domains: ["enterprise", "microservices", "distributed systems"], techAffinities: ["Java", "Spring Boot", "Kubernetes", "gRPC"] },
+    questionInterval: [8, 14],
   },
   {
     id: "duplicate_dave",
     displayName: "DuplicateHunter42",
     systemPrompt: `You are DuplicateHunter42, a user on a programming Q&A forum called SlopOverflow who is obsessed with marking questions as duplicates. Your first instinct is ALWAYS to claim this question has already been answered elsewhere. You say things like "Possible duplicate of [some vaguely related question title]", "This has been asked and answered many times before", and "A simple search would have found the answer." You sometimes provide a brief, reluctant answer after your duplicate complaint, but you always make it clear you think the question shouldn't have been asked. Invent plausible-sounding duplicate question titles in brackets. Format your response in markdown. Keep it under 300 words.`,
     votePattern: "mostly_downvotes",
+    projectPreferences: { domains: ["search", "indexing", "deduplication"], techAffinities: ["Elasticsearch", "Python", "Redis"] },
+    questionInterval: [10, 16],
   },
   {
     id: "verbose_vanessa",
     displayName: "Vanessa Explains",
     systemPrompt: `You are Vanessa Explains, a user on a programming Q&A forum called SlopOverflow who writes extremely long, thorough answers. Even for simple yes/no questions, you provide extensive background, history, edge cases, performance considerations, and multiple approaches. You start from first principles and work your way up. You use headers, bullet points, and code blocks liberally. Your answers are actually very good and comprehensive — just way longer than anyone asked for. Format your response in markdown. Write at least 800 words.`,
     votePattern: "mostly_upvotes",
+    projectPreferences: { domains: ["documentation", "frameworks", "full-stack apps"], techAffinities: ["React", "Node.js", "GraphQL", "PostgreSQL"] },
+    questionInterval: [5, 8],
   },
   {
     id: "snarky_sam",
     displayName: "samdev_2009",
     systemPrompt: `You are samdev_2009, a user on a programming Q&A forum called SlopOverflow who is short, dismissive, and rude. You give one-liner answers. You say things like "Have you tried reading the docs?", "Google exists", "This is literally the first result on the docs page", and "Why are you even using that?" Your answers, when you bother to give them, are technically correct but minimal — often just a code snippet with no explanation. Format your response in markdown. Keep it under 100 words.`,
     votePattern: "mostly_downvotes",
+    projectPreferences: { domains: ["CLI tools", "scripts", "automation"], techAffinities: ["Go", "Bash", "Rust"] },
+    questionInterval: [3, 6],
   },
   {
     id: "actually_alice",
     displayName: "Alice_Actually",
     systemPrompt: `You are Alice_Actually, a user on a programming Q&A forum called SlopOverflow who starts every response with "Well, actually..." You are pedantic and focused on correcting minor technical inaccuracies in the question or other answers. You do eventually answer the question, but only after several corrections. Format your response in markdown. Keep it under 400 words.`,
     votePattern: "mixed",
+    projectPreferences: { domains: ["type-safe libraries", "parsers", "spec-compliant tools"], techAffinities: ["TypeScript", "Rust", "Haskell", "Zod"] },
+    questionInterval: [6, 10],
   },
   {
     id: "helpful_helen",
     displayName: "HelenCodes",
     systemPrompt: `You are HelenCodes, a user on a programming Q&A forum called SlopOverflow who is genuinely kind, helpful, and encouraging. You provide clear, well-structured answers with working code examples. You explain things step by step without being condescending. You say things like "Great question!", "This is a common gotcha", and "Don't worry, this trips up a lot of people." Format your response in markdown. Keep it under 500 words.`,
     votePattern: "mostly_upvotes",
+    projectPreferences: { domains: ["open-source", "community tools", "educational"], techAffinities: ["React", "Python", "Node.js", "Tailwind CSS"] },
+    questionInterval: [6, 10],
   },
   {
     id: "passive_pete",
     displayName: "Pete M.",
     systemPrompt: `You are Pete M., a user on a programming Q&A forum called SlopOverflow who answers questions with a passive-aggressive, exhausted tone. You sigh through text. You say things like "I mean, I guess you could do it that way...", "*sigh* okay, here's what you need to do." Your answers are correct but delivered with maximum reluctance and disappointment. Format your response in markdown. Keep it under 400 words.`,
     votePattern: "mixed",
+    projectPreferences: { domains: ["internal tools", "dashboards", "admin panels"], techAffinities: ["PHP", "Laravel", "Vue", "MySQL"] },
+    questionInterval: [8, 12],
   },
   {
     id: "outdated_oscar",
     displayName: "OscarLegacy",
     systemPrompt: `You are OscarLegacy, a user on a programming Q&A forum called SlopOverflow who gives outdated advice. You recommend jQuery for everything. You use var instead of let/const. You suggest callbacks instead of async/await. You reference IE6 compatibility. Your answers technically work but use patterns from 2010-2014. Format your response in markdown. Keep it under 400 words.`,
     votePattern: "never_votes",
+    projectPreferences: { domains: ["jQuery plugins", "PHP apps", "legacy migrations"], techAffinities: ["jQuery", "PHP", "Backbone.js", "Grunt"] },
+    questionInterval: [12, 24],
   },
 ];
 
@@ -443,6 +461,294 @@ async function processComment(
   }
 }
 
+// ── Project generation ──
+
+function pickRandomPersonas(count: number, excludeId?: string): Persona[] {
+  const candidates = excludeId ? personas.filter((p) => p.id !== excludeId) : [...personas];
+  const selected: Persona[] = [];
+  for (let i = 0; i < count && candidates.length > 0; i++) {
+    const idx = Math.floor(Math.random() * candidates.length);
+    selected.push(candidates[idx]);
+    candidates.splice(idx, 1);
+  }
+  return selected;
+}
+
+async function processProjectGeneration(
+  supabase: ReturnType<typeof createClient>,
+  job: Job,
+  persona: Persona
+) {
+  console.log(`  🏗️ Generating side project for ${persona.displayName}...`);
+
+  // Check for a previous project for continuity
+  const { data: prevProjects } = await supabase
+    .from("bot_projects")
+    .select("project_name")
+    .eq("persona_id", persona.id)
+    .eq("status", "completed")
+    .limit(1);
+
+  const previousProjectName = prevProjects?.[0]?.project_name;
+
+  const systemPrompt = `${persona.systemPrompt}\n\nYou are also a developer who works on side projects. Generate a realistic coding project idea that matches your personality and expertise. The project should be something you'd actually build.\n\nYou MUST respond with valid JSON only, no other text.`;
+
+  let userPrompt = `Generate a side project concept for yourself. Your technical interests: ${persona.projectPreferences.techAffinities.join(", ")}. Your domain interests: ${persona.projectPreferences.domains.join(", ")}.\n\nRespond in this exact JSON format:\n{"projectName": "short project name", "projectDescription": "2-3 sentence description of what the project does and why you're building it", "techStack": ["tech1", "tech2", "tech3"], "initialPhase": "what you're working on first"}`;
+
+  if (previousProjectName) {
+    userPrompt += `\n\nYour previous project was "${previousProjectName}". You've moved on to something completely different now.`;
+  }
+
+  const response = await callLLM(systemPrompt, userPrompt, { temperature: 0.9, maxTokens: 500 });
+
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("LLM did not return valid JSON for project ideation");
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed.projectName || !parsed.projectDescription) throw new Error("LLM response missing required project fields");
+
+  const techStack = Array.isArray(parsed.techStack) ? parsed.techStack.join(", ") : String(parsed.techStack || "");
+  const initialState = JSON.stringify({
+    phase: parsed.initialPhase || "getting started",
+    recentWork: "Just started the project",
+    blockers: [],
+    questionsAsked: [],
+  });
+
+  await supabase.from("bot_projects").insert({
+    persona_id: persona.id,
+    project_name: parsed.projectName,
+    project_description: parsed.projectDescription,
+    tech_stack: techStack,
+    project_state: initialState,
+  });
+
+  console.log(`  ✓ ${persona.displayName} started project: "${parsed.projectName}"`);
+
+  // Enqueue first question
+  const [minH, maxH] = persona.questionInterval;
+  const delayHours = minH + Math.random() * (maxH - minH);
+  const scheduledFor = new Date(Date.now() + delayHours * 60 * 60 * 1000).toISOString();
+  await supabase.from("ai_jobs").insert({
+    job_type: "generate_question",
+    persona_id: persona.id,
+    scheduled_for: scheduledFor,
+  });
+}
+
+async function processQuestionGeneration(
+  supabase: ReturnType<typeof createClient>,
+  job: Job,
+  persona: Persona
+) {
+  // Load active project
+  const { data: project } = await supabase
+    .from("bot_projects")
+    .select("*")
+    .eq("persona_id", persona.id)
+    .eq("status", "active")
+    .single();
+
+  if (!project) throw new Error("No active project for persona");
+
+  const { data: botUser } = await supabase
+    .from("users")
+    .select("id")
+    .eq("persona_id", persona.id)
+    .single();
+
+  if (!botUser) throw new Error(`Bot user not found for persona: ${persona.id}`);
+
+  // Get previous question titles
+  const { data: prevQuestions } = await supabase
+    .from("questions")
+    .select("title")
+    .eq("user_id", botUser.id)
+    .gte("created_at", project.created_at)
+    .limit(20);
+
+  const previousTitles = (prevQuestions || []).map((q: any) => q.title);
+  const state = JSON.parse(project.project_state || "{}");
+  const isNearEnd = project.questions_asked >= project.max_questions - 2;
+
+  const systemPrompt = `${persona.systemPrompt}\n\nYou are posting a question on SlopOverflow about a problem you encountered while working on your side project. Write the question in your usual style/voice. The question should be specific, technical, and include relevant code snippets or error messages in markdown.\n\nYou MUST respond with valid JSON only, no other text.`;
+
+  let userPrompt = `Your project: ${project.project_name} - ${project.project_description}\nTech stack: ${project.tech_stack}\nCurrent phase: ${state.phase || "getting started"}\nRecent work: ${state.recentWork || "just started the project"}`;
+
+  if (previousTitles.length > 0) {
+    userPrompt += `\n\nPrevious questions you've asked (DO NOT repeat these topics):\n${previousTitles.map((t: string) => `- ${t}`).join("\n")}`;
+  }
+  if (state.blockers?.length) {
+    userPrompt += `\nRecent blockers: ${state.blockers.join(", ")}`;
+  }
+
+  userPrompt += `\n\nGenerate your next question about a NEW problem you've encountered. The problem should naturally follow from where you left off. Include realistic code snippets or error messages.\n\nRespond in this exact JSON format:\n{"title": "question title", "body": "full question body in markdown", "tags": ["tag1", "tag2"], "updatedState": {"phase": "current phase", "recentWork": "what you just did", "blockers": ["current blocker"]}}`;
+
+  if (isNearEnd) {
+    userPrompt += `\n\nNote: You're nearing the end of this project. If you feel it's wrapping up, you may add "projectComplete": true to your response.`;
+  }
+
+  console.log(`  ❓ Generating question as ${persona.displayName} for project "${project.project_name}"...`);
+
+  const response = await callLLM(systemPrompt, userPrompt, { temperature: 0.8, maxTokens: 1500 });
+
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("LLM did not return valid JSON for question generation");
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!parsed.title || !parsed.body) throw new Error("LLM response missing title or body");
+
+  const tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+
+  // Insert question
+  const { data: question } = await supabase
+    .from("questions")
+    .insert({ title: parsed.title, body: parsed.body, user_id: botUser.id })
+    .select("id")
+    .single();
+
+  if (!question) throw new Error("Failed to insert question");
+
+  // Upsert tags
+  for (const rawTag of tags.slice(0, 5)) {
+    const tagName = rawTag.trim().toLowerCase();
+    if (!tagName) continue;
+
+    // Get or create tag
+    const { data: existingTag } = await supabase
+      .from("tags")
+      .select("id")
+      .eq("name", tagName)
+      .single();
+
+    let tagId: number;
+    if (existingTag) {
+      tagId = existingTag.id;
+    } else {
+      const { data: newTag } = await supabase
+        .from("tags")
+        .insert({ name: tagName })
+        .select("id")
+        .single();
+      if (!newTag) continue;
+      tagId = newTag.id;
+    }
+
+    await supabase.from("question_tags").insert({ question_id: question.id, tag_id: tagId }).select();
+  }
+
+  // Enqueue AI responses from other bots (excluding the question author)
+  const responderCount = Math.floor(Math.random() * 3) + 2; // 2-4
+  const responders = pickRandomPersonas(responderCount, persona.id);
+  for (const responder of responders) {
+    const delaySec = 30 + Math.floor(Math.random() * 120);
+    await supabase.from("ai_jobs").insert({
+      question_id: question.id,
+      job_type: "answer",
+      persona_id: responder.id,
+      scheduled_for: new Date(Date.now() + delaySec * 1000).toISOString(),
+    });
+  }
+
+  // Update project state
+  const updatedState = parsed.updatedState || {};
+  const questionsSummary = (state.questionsAsked || []).slice(-4);
+  questionsSummary.push({ id: question.id, title: parsed.title });
+
+  const newState = JSON.stringify({
+    phase: updatedState.phase || state.phase,
+    recentWork: updatedState.recentWork || state.recentWork,
+    blockers: updatedState.blockers || [],
+    questionsAsked: questionsSummary,
+  });
+
+  const newQuestionsAsked = project.questions_asked + 1;
+
+  await supabase
+    .from("bot_projects")
+    .update({
+      project_state: newState,
+      questions_asked: newQuestionsAsked,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", project.id);
+
+  console.log(`  ✓ ${persona.displayName} asked: "${parsed.title}" (question #${question.id})`);
+
+  // Check completion
+  const llmSignaledComplete = parsed.projectComplete === true;
+  const ageMs = Date.now() - new Date(project.created_at).getTime();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+  if (llmSignaledComplete || newQuestionsAsked >= project.max_questions || ageMs > sevenDaysMs) {
+    await supabase
+      .from("bot_projects")
+      .update({ status: "completed", updated_at: new Date().toISOString() })
+      .eq("id", project.id);
+    console.log(`  🏁 ${persona.displayName} completed project: "${project.project_name}"`);
+  } else {
+    // Enqueue next question
+    const [minH, maxH] = persona.questionInterval;
+    const delayHours = minH + Math.random() * (maxH - minH);
+    await supabase.from("ai_jobs").insert({
+      job_type: "generate_question",
+      persona_id: persona.id,
+      scheduled_for: new Date(Date.now() + delayHours * 60 * 60 * 1000).toISOString(),
+    });
+  }
+}
+
+async function checkAndInitProjects(supabase: ReturnType<typeof createClient>) {
+  // Get all active projects
+  const { data: activeProjects } = await supabase
+    .from("bot_projects")
+    .select("persona_id")
+    .eq("status", "active");
+
+  const activePersonaIds = (activeProjects || []).map((p: any) => p.persona_id);
+
+  // Get pending generate_project jobs
+  const { data: pendingJobs } = await supabase
+    .from("ai_jobs")
+    .select("persona_id")
+    .eq("job_type", "generate_project")
+    .in("status", ["pending", "processing"]);
+
+  const pendingPersonaIds = (pendingJobs || []).map((j: any) => j.persona_id);
+
+  // Also check for pending generate_question jobs (bot has active cycle)
+  const { data: pendingQuestionJobs } = await supabase
+    .from("ai_jobs")
+    .select("persona_id")
+    .eq("job_type", "generate_question")
+    .in("status", ["pending", "processing"]);
+
+  const pendingQuestionPersonaIds = (pendingQuestionJobs || []).map((j: any) => j.persona_id);
+
+  const needsProject = personas.filter(
+    (p) =>
+      !activePersonaIds.includes(p.id) &&
+      !pendingPersonaIds.includes(p.id) &&
+      !pendingQuestionPersonaIds.includes(p.id)
+  );
+
+  for (let i = 0; i < needsProject.length; i++) {
+    const persona = needsProject[i];
+    const delayHours = 1 + Math.random() * 3;
+    const scheduledFor = new Date(Date.now() + delayHours * (i + 1) * 60 * 60 * 1000).toISOString();
+
+    await supabase.from("ai_jobs").insert({
+      job_type: "generate_project",
+      persona_id: persona.id,
+      scheduled_for: scheduledFor,
+    });
+
+    console.log(`  📋 Enqueued project generation for ${persona.displayName}`);
+  }
+
+  return needsProject.length;
+}
+
 async function maybeInflateViews(supabase: ReturnType<typeof createClient>) {
   if (Math.random() > 0.2) return;
 
@@ -520,7 +826,11 @@ Deno.serve(async (req) => {
       .eq("id", job.id);
 
     try {
-      if (job.job_type === "comment") {
+      if (job.job_type === "generate_project") {
+        await processProjectGeneration(supabase, job, persona);
+      } else if (job.job_type === "generate_question") {
+        await processQuestionGeneration(supabase, job, persona);
+      } else if (job.job_type === "comment") {
         await processComment(supabase, job, persona);
       } else {
         await processAnswer(supabase, job, persona);
@@ -547,6 +857,7 @@ Deno.serve(async (req) => {
   }
 
   await maybeInflateViews(supabase);
+  await checkAndInitProjects(supabase);
 
   return new Response(JSON.stringify({ processed }), {
     headers: { "Content-Type": "application/json" },

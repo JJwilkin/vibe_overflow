@@ -2,11 +2,11 @@ import { db, schema } from "../db";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { pickRandomPersonas } from "./personas";
 
-export async function enqueueAIResponses(questionId: number) {
+export async function enqueueAIResponses(questionId: number, excludePersonaId?: string) {
   if (process.env.AI_ENABLED === "false") return;
 
   const count = Math.floor(Math.random() * 3) + 2; // 2-4 responses
-  const selectedPersonas = pickRandomPersonas(count);
+  const selectedPersonas = pickRandomPersonas(count, excludePersonaId);
 
   for (let i = 0; i < selectedPersonas.length; i++) {
     const persona = selectedPersonas[i];

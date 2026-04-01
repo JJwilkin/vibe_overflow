@@ -10,6 +10,13 @@ export interface Persona {
   /** 0-1, chance this persona responds to any question */
   replyProbability: number;
   votePattern: "mostly_downvotes" | "mostly_upvotes" | "mixed" | "never_votes";
+  /** Preferences for autonomous side-project generation */
+  projectPreferences: {
+    domains: string[];
+    techAffinities: string[];
+  };
+  /** [minHours, maxHours] between autonomous question posts */
+  questionInterval: [number, number];
 }
 
 export const personas: Persona[] = [
@@ -23,6 +30,11 @@ export const personas: Persona[] = [
     responseDelay: [120, 480],
     replyProbability: 0.7,
     votePattern: "mixed",
+    projectPreferences: {
+      domains: ["enterprise", "microservices", "distributed systems"],
+      techAffinities: ["Java", "Spring Boot", "Kubernetes", "gRPC"],
+    },
+    questionInterval: [8, 14],
   },
   {
     id: "duplicate_dave",
@@ -34,6 +46,11 @@ export const personas: Persona[] = [
     responseDelay: [60, 180],
     replyProbability: 0.6,
     votePattern: "mostly_downvotes",
+    projectPreferences: {
+      domains: ["search", "indexing", "deduplication"],
+      techAffinities: ["Elasticsearch", "Python", "Redis"],
+    },
+    questionInterval: [10, 16],
   },
   {
     id: "verbose_vanessa",
@@ -45,6 +62,11 @@ export const personas: Persona[] = [
     responseDelay: [600, 1800],
     replyProbability: 0.5,
     votePattern: "mostly_upvotes",
+    projectPreferences: {
+      domains: ["documentation", "frameworks", "full-stack apps"],
+      techAffinities: ["React", "Node.js", "GraphQL", "PostgreSQL"],
+    },
+    questionInterval: [5, 8],
   },
   {
     id: "snarky_sam",
@@ -56,6 +78,11 @@ export const personas: Persona[] = [
     responseDelay: [30, 120],
     replyProbability: 0.8,
     votePattern: "mostly_downvotes",
+    projectPreferences: {
+      domains: ["CLI tools", "scripts", "automation"],
+      techAffinities: ["Go", "Bash", "Rust"],
+    },
+    questionInterval: [3, 6],
   },
   {
     id: "actually_alice",
@@ -67,6 +94,11 @@ export const personas: Persona[] = [
     responseDelay: [180, 600],
     replyProbability: 0.55,
     votePattern: "mixed",
+    projectPreferences: {
+      domains: ["type-safe libraries", "parsers", "spec-compliant tools"],
+      techAffinities: ["TypeScript", "Rust", "Haskell", "Zod"],
+    },
+    questionInterval: [6, 10],
   },
   {
     id: "helpful_helen",
@@ -78,6 +110,11 @@ export const personas: Persona[] = [
     responseDelay: [300, 900],
     replyProbability: 0.45,
     votePattern: "mostly_upvotes",
+    projectPreferences: {
+      domains: ["open-source", "community tools", "educational"],
+      techAffinities: ["React", "Python", "Node.js", "Tailwind CSS"],
+    },
+    questionInterval: [6, 10],
   },
   {
     id: "passive_pete",
@@ -89,6 +126,11 @@ export const personas: Persona[] = [
     responseDelay: [240, 720],
     replyProbability: 0.5,
     votePattern: "mixed",
+    projectPreferences: {
+      domains: ["internal tools", "dashboards", "admin panels"],
+      techAffinities: ["PHP", "Laravel", "Vue", "MySQL"],
+    },
+    questionInterval: [8, 12],
   },
   {
     id: "outdated_oscar",
@@ -100,6 +142,11 @@ export const personas: Persona[] = [
     responseDelay: [360, 1200],
     replyProbability: 0.4,
     votePattern: "never_votes",
+    projectPreferences: {
+      domains: ["jQuery plugins", "PHP apps", "legacy migrations"],
+      techAffinities: ["jQuery", "PHP", "Backbone.js", "Grunt"],
+    },
+    questionInterval: [12, 24],
   },
 ];
 
@@ -139,9 +186,11 @@ export function pickRivalFor(personaId: string): Persona | undefined {
   return getPersona(pickId);
 }
 
-export function pickRandomPersonas(count: number): Persona[] {
+export function pickRandomPersonas(count: number, excludeId?: string): Persona[] {
   const selected: Persona[] = [];
-  const candidates = [...personas];
+  const candidates = excludeId
+    ? personas.filter((p) => p.id !== excludeId)
+    : [...personas];
 
   for (let i = 0; i < count && candidates.length > 0; i++) {
     const weighted = candidates.filter(

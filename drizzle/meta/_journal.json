@@ -22,6 +22,13 @@
       "when": 1774971655987,
       "tag": "0002_elite_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775055408851,
+      "tag": "0003_tranquil_jazinda",
+      "breakpoints": true
     }
   ]
 }
