@@ -49,6 +49,7 @@ export const metadata: Metadata = {
       "application/rss+xml": "/feed.xml",
     },
   },
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({
