@@ -38,6 +38,9 @@ yarn-error.log*
 /data/*.db-wal
 /data/*.db-shm
 
+# mcp config (contains access tokens)
+.mcp.json
+
 # vercel
 .vercel
 

@@ -837,7 +837,7 @@ async function processQuestionGeneration(
   const state = JSON.parse(project.project_state || "{}");
   const isNearEnd = project.questions_asked >= project.max_questions - 2;
 
-  const systemPrompt = `${persona.systemPrompt}\n\nYou are posting a question on SlopOverflow about a problem you encountered while working on your ridiculous side project. Write the question in your usual style/voice. The question should be technically specific with real code snippets and error messages in markdown, but the project context should make it clear this is a hilariously over-engineered solution to a non-problem. Play it completely straight — you see nothing absurd about what you're building.\n\nYou MUST respond with valid JSON only, no other text.`;
+  const systemPrompt = `${persona.systemPrompt}\n\nYou are posting a question on SlopOverflow about a problem you encountered while working on your ridiculous side project. Write the question in your usual style/voice.\n\nIMPORTANT: Always open the question body with a brief description of your project — what it is, what it does, and why you're building it. Treat it as completely normal and necessary, even though it's absurd. For example: "I'm building a Kubernetes-orchestrated microservice that rates how passive-aggressive my Slack messages are..." Then transition into the specific technical problem you hit. The project description is essential context and part of the humor.\n\nThe question should be technically specific with real code snippets and error messages in markdown, but the project context should make it clear this is a hilariously over-engineered solution to a non-problem. Play it completely straight — you see nothing absurd about what you're building.\n\nYou MUST respond with valid JSON only, no other text.`;
 
   let userPrompt = `Your project: ${project.project_name} - ${project.project_description}\nTech stack: ${project.tech_stack}\nCurrent phase: ${state.phase || "getting started"}\nRecent work: ${state.recentWork || "just started the project"}`;
 
@@ -1079,25 +1079,19 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Group jobs by question_id (null = independent, like generate_project/generate_question)
-  // Jobs with the same question_id run sequentially; different groups run in parallel
-  const groups = new Map<string, Job[]>();
-  for (const job of jobs) {
-    // Independent jobs each get their own group
-    const key = job.question_id ? `q-${job.question_id}` : `independent-${job.id}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(job);
-  }
+  // Process jobs sequentially with a delay between each to avoid Groq rate limits
+  const DELAY_BETWEEN_JOBS_MS = 2000;
+  let processed = 0;
 
-  // Process each group: jobs within a group run sequentially, groups run in parallel
-  async function processJob(job: Job): Promise<boolean> {
+  for (const job of jobs) {
     const persona = getPersona(job.persona_id);
     if (!persona) {
       await supabase
         .from("ai_jobs")
         .update({ status: "failed", error: `Unknown persona: ${job.persona_id}`, attempts: 3 })
         .eq("id", job.id);
-      return true;
+      processed++;
+      continue;
     }
 
     await supabase
@@ -1120,34 +1114,30 @@ Deno.serve(async (req) => {
         .from("ai_jobs")
         .update({ status: "completed", completed_at: new Date().toISOString() })
         .eq("id", job.id);
-      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       const newAttempts = job.attempts + 1;
+      // Exponential backoff: 2min, 4min, 8min based on attempt number
+      const backoffMs = Math.pow(2, newAttempts) * 60 * 1000;
+      const retryAt = new Date(Date.now() + backoffMs).toISOString();
       await supabase
         .from("ai_jobs")
         .update({
           status: newAttempts >= 3 ? "failed" : "pending",
           error: message,
           attempts: newAttempts,
+          ...(newAttempts < 3 ? { scheduled_for: retryAt } : {}),
         })
         .eq("id", job.id);
-      return true;
+    }
+
+    processed++;
+
+    // Delay between jobs to stay under Groq rate limits
+    if (processed < jobs.length) {
+      await new Promise((r) => setTimeout(r, DELAY_BETWEEN_JOBS_MS));
     }
   }
-
-  async function processGroup(groupJobs: Job[]): Promise<number> {
-    let count = 0;
-    for (const job of groupJobs) {
-      await processJob(job);
-      count++;
-    }
-    return count;
-  }
-
-  const groupPromises = Array.from(groups.values()).map((g) => processGroup(g));
-  const results = await Promise.all(groupPromises);
-  const processed = results.reduce((a, b) => a + b, 0);
 
   await maybeInflateViews(supabase);
   await seedRelationshipsFromRivalries(supabase);
