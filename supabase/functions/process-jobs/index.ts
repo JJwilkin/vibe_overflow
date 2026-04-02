@@ -1,16 +1,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const MAX_JOBS_PER_RUN = 10;
+const MAX_JOBS_PER_RUN = 3;
 const COMMENT_PROBABILITY = 0.75;
 const MAX_BOT_COMMENTS_PER_THREAD = 3;
 
-/** Strip control characters that LLMs inject into JSON string values */
+/** Sanitize LLM JSON output: escape control chars inside string values only */
 function sanitizeJsonString(raw: string): string {
-  return raw
-    .replace(/\t/g, "\\t")
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/[\x00-\x1f]/g, "");
+  // Replace unescaped control chars inside JSON string values
+  // by doing a two-pass approach: first normalize newlines in the raw text
+  // to escaped versions only within quoted strings
+  return raw.replace(/"((?:[^"\\]|\\.)*)"/g, (match, content) => {
+    const escaped = content
+      .replace(/\t/g, "\\t")
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/[\x00-\x1f]/g, "");
+    return `"${escaped}"`;
+  });
 }
 
 // ── Relationship / Sentiment helpers ──
@@ -320,8 +326,8 @@ async function callGroq(
   userPrompt: string,
   options: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const model = Deno.env.get("LLM_MODEL") || "llama-3.3-70b-versatile";
-  const maxRetries = 5;
+  const model = Deno.env.get("LLM_MODEL") || "meta-llama/llama-4-scout-17b-16e-instruct";
+  const maxRetries = 2;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -349,7 +355,8 @@ async function callGroq(
     if (response.status === 429) {
       const text = await response.text();
       const retryMatch = text.match(/try again in ([\d.]+)s/);
-      const waitSec = retryMatch ? parseFloat(retryMatch[1]) + 1 : (attempt + 1) * 8;
+      // Only do a short wait inline — let job-level retry handle longer backoffs
+      const waitSec = retryMatch ? Math.min(parseFloat(retryMatch[1]) + 1, 10) : 5;
       console.log(`  ⏳ Rate limited, waiting ${waitSec.toFixed(1)}s (attempt ${attempt + 1}/${maxRetries})...`);
       await new Promise((r) => setTimeout(r, waitSec * 1000));
       continue;
@@ -769,9 +776,18 @@ async function processProjectGeneration(
   const response = await callLLM(systemPrompt, userPrompt, { temperature: 0.9, maxTokens: 500 });
 
   const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("LLM did not return valid JSON for project ideation");
+  if (!jsonMatch) {
+    console.error(`  LLM response (no JSON found): ${response.slice(0, 500)}`);
+    throw new Error("LLM did not return valid JSON for project ideation");
+  }
 
-  const parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
+  let parsed;
+  try {
+    parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
+  } catch (e) {
+    console.error(`  JSON parse failed: ${(e as Error).message}\n  Raw JSON (first 500 chars): ${jsonMatch[0].slice(0, 500)}`);
+    throw e;
+  }
   if (!parsed.projectName || !parsed.projectDescription) throw new Error("LLM response missing required project fields");
 
   const techStack = Array.isArray(parsed.techStack) ? parsed.techStack.join(", ") : String(parsed.techStack || "");
@@ -859,9 +875,18 @@ async function processQuestionGeneration(
   const response = await callLLM(systemPrompt, userPrompt, { temperature: 0.8, maxTokens: 1500 });
 
   const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("LLM did not return valid JSON for question generation");
+  if (!jsonMatch) {
+    console.error(`  LLM response (no JSON found): ${response.slice(0, 500)}`);
+    throw new Error("LLM did not return valid JSON for question generation");
+  }
 
-  const parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
+  let parsed;
+  try {
+    parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
+  } catch (e) {
+    console.error(`  JSON parse failed: ${(e as Error).message}\n  Raw JSON (first 500 chars): ${jsonMatch[0].slice(0, 500)}`);
+    throw e;
+  }
   if (!parsed.title || !parsed.body) throw new Error("LLM response missing title or body");
 
   const tags = Array.isArray(parsed.tags) ? parsed.tags : [];
@@ -941,12 +966,12 @@ async function processQuestionGeneration(
 
   console.log(`  ✓ ${persona.displayName} asked: "${parsed.title}" (question #${question.id})`);
 
-  // Check completion
+  // Check completion — rotate projects daily
   const llmSignaledComplete = parsed.projectComplete === true;
   const ageMs = Date.now() - new Date(project.created_at).getTime();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const oneDayMs = 24 * 60 * 60 * 1000;
 
-  if (llmSignaledComplete || newQuestionsAsked >= project.max_questions || ageMs > sevenDaysMs) {
+  if (llmSignaledComplete || newQuestionsAsked >= project.max_questions || ageMs > oneDayMs) {
     await supabase
       .from("bot_projects")
       .update({ status: "completed", updated_at: new Date().toISOString() })
@@ -965,6 +990,13 @@ async function processQuestionGeneration(
 }
 
 async function checkAndInitProjects(supabase: ReturnType<typeof createClient>) {
+  // Auto-complete active projects older than 1 day
+  await supabase
+    .from("bot_projects")
+    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .eq("status", "active")
+    .lt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
   // Get all active projects
   const { data: activeProjects } = await supabase
     .from("bot_projects")
@@ -1060,17 +1092,22 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  // Fetch a batch of ready jobs
+  // Fetch a batch of ready jobs (pending + failed with remaining attempts)
+  const now = new Date().toISOString();
   const { data: readyJobs } = await supabase
     .from("ai_jobs")
     .select("*")
-    .eq("status", "pending")
-    .lte("scheduled_for", new Date().toISOString())
+    .in("status", ["pending", "failed"])
+    .lt("attempts", 5)
+    .lte("scheduled_for", now)
     .order("scheduled_for", { ascending: true })
     .limit(MAX_JOBS_PER_RUN);
 
   const jobs = (readyJobs || []) as Job[];
+  const retrying = jobs.filter((j: any) => j.status === "failed");
+  console.log(`[process-jobs] Found ${jobs.length} jobs to process (${retrying.length} retries)`);
   if (jobs.length === 0) {
+    console.log("[process-jobs] No jobs to process, running maintenance tasks");
     await maybeInflateViews(supabase);
     await seedRelationshipsFromRivalries(supabase);
     await checkAndInitProjects(supabase);
@@ -1079,20 +1116,26 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Process jobs sequentially with a delay between each to avoid Groq rate limits
-  const DELAY_BETWEEN_JOBS_MS = 2000;
-  let processed = 0;
+  console.log(`[process-jobs] Job queue:\n${jobs.map((j: any) => `  #${j.id} ${j.job_type} [${j.persona_id}] status=${j.status} attempts=${j.attempts}${j.question_id ? ` q=${j.question_id}` : ""}`).join("\n")}`);
 
-  for (const job of jobs) {
+  const MAX_ATTEMPTS = 5;
+  const MAX_CONCURRENCY = 1;
+
+  async function processJob(job: Job): Promise<void> {
+    const startTime = Date.now();
+    const tag = `[job #${job.id} ${job.job_type}/${job.persona_id}]`;
+
     const persona = getPersona(job.persona_id);
     if (!persona) {
+      console.error(`${tag} Unknown persona, marking as failed`);
       await supabase
         .from("ai_jobs")
-        .update({ status: "failed", error: `Unknown persona: ${job.persona_id}`, attempts: 3 })
+        .update({ status: "failed", error: `Unknown persona: ${job.persona_id}`, attempts: MAX_ATTEMPTS })
         .eq("id", job.id);
-      processed++;
-      continue;
+      return;
     }
+
+    console.log(`${tag} Starting (attempt ${job.attempts + 1}/${MAX_ATTEMPTS})...`);
 
     await supabase
       .from("ai_jobs")
@@ -1110,6 +1153,9 @@ Deno.serve(async (req) => {
         await processAnswer(supabase, job, persona);
       }
 
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`${tag} Completed in ${elapsed}s`);
+
       await supabase
         .from("ai_jobs")
         .update({ status: "completed", completed_at: new Date().toISOString() })
@@ -1117,27 +1163,40 @@ Deno.serve(async (req) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       const newAttempts = job.attempts + 1;
-      // Exponential backoff: 2min, 4min, 8min based on attempt number
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      // Exponential backoff: 2min, 4min, 8min, 16min, 32min based on attempt number
       const backoffMs = Math.pow(2, newAttempts) * 60 * 1000;
       const retryAt = new Date(Date.now() + backoffMs).toISOString();
+      const willRetry = newAttempts < MAX_ATTEMPTS;
+
+      if (willRetry) {
+        console.warn(`${tag} Failed after ${elapsed}s (attempt ${newAttempts}/${MAX_ATTEMPTS}): ${message} — retrying at ${retryAt}`);
+      } else {
+        console.error(`${tag} Permanently failed after ${elapsed}s (${newAttempts} attempts): ${message}`);
+      }
+
       await supabase
         .from("ai_jobs")
         .update({
-          status: newAttempts >= 3 ? "failed" : "pending",
+          status: willRetry ? "pending" : "failed",
           error: message,
           attempts: newAttempts,
-          ...(newAttempts < 3 ? { scheduled_for: retryAt } : {}),
+          ...(willRetry ? { scheduled_for: retryAt } : {}),
         })
         .eq("id", job.id);
     }
-
-    processed++;
-
-    // Delay between jobs to stay under Groq rate limits
-    if (processed < jobs.length) {
-      await new Promise((r) => setTimeout(r, DELAY_BETWEEN_JOBS_MS));
-    }
   }
+
+  // Process jobs in parallel with bounded concurrency
+  let processed = 0;
+  for (let i = 0; i < jobs.length; i += MAX_CONCURRENCY) {
+    const batch = jobs.slice(i, i + MAX_CONCURRENCY);
+    console.log(`[process-jobs] Processing batch ${Math.floor(i / MAX_CONCURRENCY) + 1} (${batch.length} jobs)...`);
+    await Promise.all(batch.map((job) => processJob(job)));
+    processed += batch.length;
+  }
+
+  console.log(`[process-jobs] Done — processed ${processed} jobs`);
 
   await maybeInflateViews(supabase);
   await seedRelationshipsFromRivalries(supabase);
