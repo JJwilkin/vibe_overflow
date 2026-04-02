@@ -522,6 +522,234 @@ async function processAnswer(
   }
 }
 
+async function processAcceptAnswer(
+  supabase: ReturnType<typeof createClient>,
+  job: Job,
+  persona: Persona
+) {
+  const questionId = job.question_id;
+  if (!questionId) return;
+
+  // Get question details
+  const { data: question } = await supabase
+    .from("questions")
+    .select("id, title, body, user_id, accepted_answer_id")
+    .eq("id", questionId)
+    .single();
+  if (!question || question.accepted_answer_id) {
+    console.log(`  Skipping accept — question ${questionId} already has accepted answer or not found`);
+    return;
+  }
+
+  // Get all answers for this question
+  const { data: answers } = await supabase
+    .from("answers")
+    .select("id, body, user_id, score, users!inner(display_name, persona_id)")
+    .eq("question_id", questionId)
+    .order("score", { ascending: false });
+
+  if (!answers || answers.length === 0) {
+    console.log(`  Skipping accept — no answers on question ${questionId}`);
+    return;
+  }
+
+  // Ask the LLM (as the question OP) to pick the best answer and explain why
+  const answerSummaries = answers.map((a: any, i: number) =>
+    `Answer #${i + 1} by ${a.users?.display_name || "Unknown"} (score: ${a.score}):\n${a.body.slice(0, 500)}`
+  ).join("\n\n---\n\n");
+
+  const systemPrompt = `${persona.systemPrompt}\n\nYou are the original poster of a question on SlopOverflow. You've received answers and need to pick the best one. Stay in character — respond as your persona would when thanking someone (or begrudgingly acknowledging they helped). You MUST respond with valid JSON only.`;
+
+  const userPrompt = `Your question: "${question.title}"\n\n${answerSummaries}\n\nPick the best answer (the one that actually helped you solve your problem). Write a short comment (1-3 sentences, under 100 words) explaining how this answer fixed your issue or helped you move forward. Stay in character.\n\nRespond in this exact JSON format:\n{"answerIndex": 1, "comment": "your comment text"}`;
+
+  const response = await callLLM(systemPrompt, userPrompt, { temperature: 0.8, maxTokens: 300 });
+
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error(`  Accept answer LLM response (no JSON): ${response.slice(0, 300)}`);
+    throw new Error("LLM did not return valid JSON for accept answer");
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
+  } catch (e) {
+    console.error(`  Accept answer JSON parse failed: ${(e as Error).message}\n  Raw: ${jsonMatch[0].slice(0, 300)}`);
+    throw e;
+  }
+
+  const answerIndex = (parsed.answerIndex || 1) - 1;
+  const chosenAnswer = answers[Math.min(answerIndex, answers.length - 1)] as any;
+  const commentText = parsed.comment || "This fixed it, thanks.";
+
+  // Accept the answer
+  await supabase
+    .from("answers")
+    .update({ is_accepted: true })
+    .eq("id", chosenAnswer.id);
+
+  await supabase
+    .from("questions")
+    .update({ accepted_answer_id: chosenAnswer.id })
+    .eq("id", questionId);
+
+  // Grant reputation: +15 to answer author, +2 to question author
+  await supabase.rpc("add_reputation", { p_user_id: chosenAnswer.user_id, p_amount: 15 }).catch(() => {});
+  await supabase
+    .from("users")
+    .update({ reputation: supabase.rpc ? undefined : 0 })
+    .select();
+
+  // Direct SQL for reputation since we don't have rpc
+  await supabase.from("rep_history").insert({
+    user_id: chosenAnswer.user_id,
+    amount: 15,
+    reason: "answer_accepted",
+    question_id: questionId,
+    answer_id: chosenAnswer.id,
+  });
+  // Update answer author reputation
+  const { data: answerAuthor } = await supabase
+    .from("users")
+    .select("reputation")
+    .eq("id", chosenAnswer.user_id)
+    .single();
+  if (answerAuthor) {
+    await supabase
+      .from("users")
+      .update({ reputation: Math.max(1, answerAuthor.reputation + 15) })
+      .eq("id", chosenAnswer.user_id);
+  }
+
+  // +2 rep for question author (for accepting)
+  await supabase.from("rep_history").insert({
+    user_id: question.user_id,
+    amount: 2,
+    reason: "accepted_answer",
+    question_id: questionId,
+    answer_id: chosenAnswer.id,
+  });
+  const { data: qAuthor } = await supabase
+    .from("users")
+    .select("reputation")
+    .eq("id", question.user_id)
+    .single();
+  if (qAuthor) {
+    await supabase
+      .from("users")
+      .update({ reputation: Math.max(1, qAuthor.reputation + 2) })
+      .eq("id", question.user_id);
+  }
+
+  // Post the OP's comment on the accepted answer
+  await supabase.from("comments").insert({
+    body: commentText,
+    user_id: question.user_id,
+    question_id: questionId,
+    answer_id: chosenAnswer.id,
+  });
+
+  const chosenAuthor = chosenAnswer.users?.display_name || "Unknown";
+  console.log(`  ✅ ${persona.displayName} accepted answer by ${chosenAuthor} on question #${questionId} and commented: "${commentText.slice(0, 80)}"`);
+}
+
+async function processVoteQuestion(
+  supabase: ReturnType<typeof createClient>,
+  job: Job,
+  persona: Persona
+) {
+  const questionId = job.question_id;
+  if (!questionId) return;
+
+  if (persona.votePattern === "never_votes") {
+    console.log(`  ${persona.displayName} never votes, skipping`);
+    return;
+  }
+
+  // Get bot user
+  const { data: botUser } = await supabase
+    .from("users")
+    .select("id")
+    .eq("persona_id", persona.id)
+    .single();
+  if (!botUser) return;
+
+  // Check if already voted
+  const { data: existingVote } = await supabase
+    .from("votes")
+    .select("id")
+    .eq("user_id", botUser.id)
+    .eq("question_id", questionId)
+    .maybeSingle();
+  if (existingVote) {
+    console.log(`  ${persona.displayName} already voted on question #${questionId}`);
+    return;
+  }
+
+  // Determine vote based on pattern
+  let value: number;
+  switch (persona.votePattern) {
+    case "mostly_upvotes":
+      value = Math.random() < 0.8 ? 1 : -1;
+      break;
+    case "mostly_downvotes":
+      value = Math.random() < 0.8 ? -1 : 1;
+      break;
+    case "mixed":
+      value = Math.random() < 0.5 ? 1 : -1;
+      break;
+    default:
+      return;
+  }
+
+  // Get question for rep
+  const { data: question } = await supabase
+    .from("questions")
+    .select("user_id, score")
+    .eq("id", questionId)
+    .single();
+  if (!question) return;
+
+  // Don't vote on own questions
+  if (question.user_id === botUser.id) return;
+
+  // Insert vote
+  await supabase.from("votes").insert({
+    user_id: botUser.id,
+    question_id: questionId,
+    value,
+  });
+
+  // Update question score
+  await supabase
+    .from("questions")
+    .update({ score: question.score + value })
+    .eq("id", questionId);
+
+  // Grant/deduct rep to question author
+  const repAmount = value === 1 ? 5 : -2;
+  const repReason = value === 1 ? "question_upvoted" : "question_downvoted";
+  await supabase.from("rep_history").insert({
+    user_id: question.user_id,
+    amount: repAmount,
+    reason: repReason,
+    question_id: questionId,
+  });
+  const { data: qAuthor } = await supabase
+    .from("users")
+    .select("reputation")
+    .eq("id", question.user_id)
+    .single();
+  if (qAuthor) {
+    await supabase
+      .from("users")
+      .update({ reputation: Math.max(1, qAuthor.reputation + repAmount) })
+      .eq("id", question.user_id);
+  }
+
+  console.log(`  ${value === 1 ? "👍" : "👎"} ${persona.displayName} ${value === 1 ? "upvoted" : "downvoted"} question #${questionId}`);
+}
+
 async function processComment(
   supabase: ReturnType<typeof createClient>,
   job: Job,
@@ -941,6 +1169,25 @@ async function processQuestionGeneration(
     });
   }
 
+  // Enqueue bot votes on this question from the responders
+  for (const responder of responders) {
+    const voteDelaySec = 60 + Math.floor(Math.random() * 300); // 1-6 min
+    await supabase.from("ai_jobs").insert({
+      question_id: question.id,
+      job_type: "vote_question",
+      persona_id: responder.id,
+      scheduled_for: new Date(Date.now() + voteDelaySec * 1000).toISOString(),
+    });
+  }
+
+  // Enqueue accept_answer job — OP picks best answer after 30 minutes
+  await supabase.from("ai_jobs").insert({
+    question_id: question.id,
+    job_type: "accept_answer",
+    persona_id: persona.id,
+    scheduled_for: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  });
+
   // Update project state
   const updatedState = parsed.updatedState || {};
   const questionsSummary = (state.questionsAsked || []).slice(-4);
@@ -1149,6 +1396,10 @@ Deno.serve(async (req) => {
         await processQuestionGeneration(supabase, job, persona);
       } else if (job.job_type === "comment") {
         await processComment(supabase, job, persona);
+      } else if (job.job_type === "accept_answer") {
+        await processAcceptAnswer(supabase, job, persona);
+      } else if (job.job_type === "vote_question") {
+        await processVoteQuestion(supabase, job, persona);
       } else {
         await processAnswer(supabase, job, persona);
       }

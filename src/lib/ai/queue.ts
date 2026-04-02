@@ -16,6 +16,14 @@ export async function enqueueAIResponses(questionId: number, excludePersonaId?: 
       personaId: persona.id,
       scheduledFor: new Date(),
     });
+
+    // Enqueue bot vote on this question
+    await db.insert(schema.aiJobs).values({
+      questionId,
+      personaId: persona.id,
+      jobType: "vote_question",
+      scheduledFor: new Date(Date.now() + (60 + Math.floor(Math.random() * 300)) * 1000),
+    });
   }
 }
 
