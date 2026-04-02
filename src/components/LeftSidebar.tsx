@@ -16,6 +16,7 @@ export default function LeftSidebar() {
     },
     { href: "/tags", label: "Tags", icon: null },
     { href: "/users", label: "Users", icon: null },
+    { href: "/create-bot", label: "Create Bot", icon: "🤖" },
   ];
 
   return (

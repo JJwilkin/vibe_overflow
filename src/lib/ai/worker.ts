@@ -1,6 +1,6 @@
 import { db, schema } from "../db";
 import { eq, and, sql } from "drizzle-orm";
-import { getPersona, pickRivalFor, pickRandomPersonas, getCommentPrompt } from "./personas";
+import { getPersona, pickRivalFor, pickRandomPersonas, getCommentPrompt, type Persona } from "./personas";
 import { generateResponse, callLLM } from "./generate";
 import {
   getNextPendingJob,
@@ -18,15 +18,31 @@ import {
   completeProject,
   getPreviousQuestionTitles,
 } from "./projects";
+import {
+  extractSentiment,
+  inferAnswerSentiment,
+  recordBotInteraction,
+  buildRelationshipContext,
+  seedRelationshipsFromRivalries,
+} from "./relationships";
 
 const POLL_INTERVAL = 5_000; // 5 seconds
 const COMMENT_PROBABILITY = 0.75; // 75% chance a bot answer triggers comments
+
+/** Strip control characters that LLMs inject into JSON string values */
+function sanitizeJsonString(raw: string): string {
+  return raw
+    .replace(/\t/g, "\\t")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/[\x00-\x1f]/g, "");
+}
 
 async function processNextJob(): Promise<boolean> {
   const job = await getNextPendingJob();
   if (!job) return false;
 
-  const persona = getPersona(job.personaId);
+  const persona = await getPersona(job.personaId);
   if (!persona) {
     await markJobFailed(job.id, `Unknown persona: ${job.personaId}`, 3);
     return true;
@@ -58,7 +74,7 @@ async function processNextJob(): Promise<boolean> {
 
 async function processAnswerJob(
   job: { id: number; questionId: number | null; personaId: string; attempts: number },
-  persona: ReturnType<typeof getPersona> & {}
+  persona: Persona
 ) {
   if (!job.questionId) {
     await markJobFailed(job.id, "Answer job missing questionId", 3);
@@ -78,6 +94,7 @@ async function processAnswerJob(
     .select({
       body: schema.answers.body,
       userName: schema.users.displayName,
+      userPersonaId: schema.users.personaId,
     })
     .from(schema.answers)
     .innerJoin(schema.users, eq(schema.answers.userId, schema.users.id))
@@ -91,6 +108,17 @@ async function processAnswerJob(
     question,
     existingAnswers
   );
+
+  // Record bot-to-bot interactions for answers that reference other bots
+  for (const existing of existingAnswers) {
+    if (existing.userPersonaId && existing.userPersonaId !== persona.id) {
+      const sentiment = inferAnswerSentiment(responseText, existing.userName);
+      await recordBotInteraction(
+        persona.id, existing.userPersonaId, "answer", sentiment,
+        responseText.slice(0, 120), job.questionId ?? undefined,
+      );
+    }
+  }
 
   const [botUser] = await db
     .select()
@@ -164,7 +192,7 @@ async function processAnswerJob(
   // Enqueue 1-2 bot comments on this answer
   if (Math.random() < COMMENT_PROBABILITY) {
     const commentCount = Math.floor(Math.random() * 2) + 1; // 1-2
-    const commenters = pickRandomPersonas(commentCount, persona.id);
+    const commenters = await pickRandomPersonas(commentCount, persona.id, persona.id);
     for (const commenter of commenters) {
       const delaySec = 10 + Math.floor(Math.random() * 60); // 10-70s after
       await db.insert(schema.aiJobs).values({
@@ -182,7 +210,7 @@ async function processAnswerJob(
 
   // 30% chance to also comment on the question itself
   if (Math.random() < 0.3) {
-    const qCommenter = pickRandomPersonas(1, persona.id)[0];
+    const qCommenter = (await pickRandomPersonas(1, persona.id))[0];
     if (qCommenter) {
       const delaySec = 15 + Math.floor(Math.random() * 45);
       await db.insert(schema.aiJobs).values({
@@ -200,7 +228,7 @@ async function processAnswerJob(
 
 async function processCommentJob(
   job: { id: number; questionId: number | null; answerId?: number | null; personaId: string; attempts: number },
-  persona: ReturnType<typeof getPersona> & {}
+  persona: Persona
 ) {
   if (!job.questionId) {
     await markJobFailed(job.id, "Comment job missing questionId", 3);
@@ -215,6 +243,7 @@ async function processCommentJob(
     .select({
       body: schema.answers.body,
       userName: schema.users.displayName,
+      userPersonaId: schema.users.personaId,
     })
     .from(schema.answers)
     .innerJoin(schema.users, eq(schema.answers.userId, schema.users.id))
@@ -240,12 +269,24 @@ async function processCommentJob(
   );
 
   const commentSystemPrompt = getCommentPrompt(persona);
-  const prompt = `Question: ${question.title}\n\n[${answer.userName}]'s answer:\n${answer.body}\n\nWrite a brief comment reacting to this answer:`;
+  let prompt = `Question: ${question.title}\n\n[${answer.userName}]'s answer:\n${answer.body}`;
 
-  const commentText = await callLLM(commentSystemPrompt, prompt, {
+  // Inject relationship context if the answer author is a bot
+  const targetPersonaId = answer.userPersonaId;
+  if (targetPersonaId) {
+    const relationshipCtx = await buildRelationshipContext(persona.id, targetPersonaId, answer.userName);
+    if (relationshipCtx) prompt += "\n" + relationshipCtx;
+  }
+
+  prompt += "\n\nWrite a brief comment reacting to this answer:";
+
+  const rawComment = await callLLM(commentSystemPrompt, prompt, {
     temperature: 0.9,
-    maxTokens: 100,
+    maxTokens: 150,
   });
+
+  // Extract sentiment tag and clean the comment text
+  const { cleanText: commentText, sentiment } = extractSentiment(rawComment);
 
   const [botUser] = await db
     .select()
@@ -264,6 +305,14 @@ async function processCommentJob(
     questionId: job.questionId,
   });
 
+  // Record bot-to-bot interaction
+  if (targetPersonaId) {
+    await recordBotInteraction(
+      persona.id, targetPersonaId, "comment", sentiment,
+      commentText.slice(0, 120), job.questionId ?? undefined, job.answerId ?? undefined,
+    );
+  }
+
   await markJobCompleted(job.id);
   console.log(
     `  ✓ ${persona.displayName} commented on answer #${job.answerId}`
@@ -272,7 +321,7 @@ async function processCommentJob(
 
 async function processProjectGenerationJob(
   job: { id: number; personaId: string; attempts: number },
-  persona: ReturnType<typeof getPersona> & {}
+  persona: Persona
 ) {
   console.log(`  🏗️ Generating side project for ${persona.displayName}...`);
 
@@ -304,7 +353,7 @@ async function processProjectGenerationJob(
     throw new Error("LLM did not return valid JSON for project ideation");
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
   if (!parsed.projectName || !parsed.projectDescription) {
     throw new Error("LLM response missing required project fields");
   }
@@ -326,6 +375,20 @@ async function processProjectGenerationJob(
     projectDescription: parsed.projectDescription,
     techStack,
     projectState: initialState,
+    questionsAsked: 0,
+    status: "active",
+  }).onConflictDoUpdate({
+    target: schema.botProjects.personaId,
+    set: {
+      projectName: parsed.projectName,
+      projectDescription: parsed.projectDescription,
+      techStack,
+      projectState: initialState,
+      questionsAsked: 0,
+      status: "active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
   });
 
   await markJobCompleted(job.id);
@@ -339,7 +402,7 @@ async function processProjectGenerationJob(
 
 async function processQuestionGenerationJob(
   job: { id: number; personaId: string; attempts: number },
-  persona: ReturnType<typeof getPersona> & {}
+  persona: Persona
 ) {
   // Load active project
   const [project] = await db
@@ -391,7 +454,7 @@ async function processQuestionGenerationJob(
     throw new Error("LLM did not return valid JSON for question generation");
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(sanitizeJsonString(jsonMatch[0]));
   if (!parsed.title || !parsed.body) {
     throw new Error("LLM response missing title or body");
   }
@@ -520,6 +583,7 @@ async function pollLoop() {
         processed = await processNextJob();
       }
       await inflateViews();
+      await seedRelationshipsFromRivalries();
       await checkAndInitProjects();
     } catch (error) {
       console.error("Worker error:", error);

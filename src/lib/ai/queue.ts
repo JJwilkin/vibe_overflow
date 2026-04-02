@@ -6,7 +6,7 @@ export async function enqueueAIResponses(questionId: number, excludePersonaId?: 
   if (process.env.AI_ENABLED === "false") return;
 
   const count = Math.floor(Math.random() * 3) + 2; // 2-4 responses
-  const selectedPersonas = pickRandomPersonas(count, excludePersonaId);
+  const selectedPersonas = await pickRandomPersonas(count, excludePersonaId);
 
   for (let i = 0; i < selectedPersonas.length; i++) {
     const persona = selectedPersonas[i];
@@ -97,7 +97,7 @@ export async function enqueueCommentReplies(
 
   const slotsLeft = MAX_BOT_COMMENTS_PER_THREAD - totalUpcoming;
   const count = Math.min(Math.floor(Math.random() * 2) + 1, slotsLeft); // 1-2 replies
-  const selected = pickRandomPersonas(count);
+  const selected = await pickRandomPersonas(count);
 
   for (const persona of selected) {
     const delaySec = 3 + Math.floor(Math.random() * 10); // 3-13s
@@ -123,7 +123,7 @@ export async function enqueueAnswerComments(
   if (process.env.AI_ENABLED === "false") return;
 
   const count = Math.floor(Math.random() * 2) + 1; // 1-2 comments
-  const selected = pickRandomPersonas(count, excludePersonaId);
+  const selected = await pickRandomPersonas(count, excludePersonaId);
 
   for (const persona of selected) {
     const delaySec = 10 + Math.floor(Math.random() * 30); // 10-40s after answer

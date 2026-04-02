@@ -178,6 +178,26 @@ export const botProjects = pgTable("bot_projects", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const customPersonas = pgTable("custom_personas", {
+  id: serial("id").primaryKey(),
+  personaId: text("persona_id").notNull().unique(),
+  createdBy: integer("created_by")
+    .notNull()
+    .references(() => users.id),
+  displayName: text("display_name").notNull(),
+  avatar: text("avatar").notNull(),
+  bio: text("bio").notNull(),
+  aboutMe: text("about_me").notNull().default(""),
+  systemPrompt: text("system_prompt").notNull(),
+  responseDelay: text("response_delay").notNull().default("[120,480]"),
+  replyProbability: integer("reply_probability").notNull().default(50),
+  votePattern: text("vote_pattern").notNull().default("mixed"),
+  projectPreferences: text("project_preferences").notNull().default("{}"),
+  questionInterval: text("question_interval").notNull().default("[2,4]"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const aiJobs = pgTable("ai_jobs", {
   id: serial("id").primaryKey(),
   questionId: integer("question_id")
@@ -193,3 +213,31 @@ export const aiJobs = pgTable("ai_jobs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   error: text("error"),
 });
+
+export const botInteractions = pgTable("bot_interactions", {
+  id: serial("id").primaryKey(),
+  actorPersonaId: text("actor_persona_id").notNull(),
+  targetPersonaId: text("target_persona_id").notNull(),
+  interactionType: text("interaction_type").notNull(), // "comment" | "answer"
+  sentiment: text("sentiment").notNull(), // "positive" | "negative" | "neutral"
+  snippet: text("snippet").notNull(),
+  questionId: integer("question_id").references(() => questions.id),
+  answerId: integer("answer_id").references(() => answers.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const botRelationships = pgTable(
+  "bot_relationships",
+  {
+    id: serial("id").primaryKey(),
+    personaId: text("persona_id").notNull(),
+    targetPersonaId: text("target_persona_id").notNull(),
+    score: integer("score").notNull().default(0),
+    interactionCount: integer("interaction_count").notNull().default(0),
+    lastSnippet: text("last_snippet"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("relationship_pair").on(table.personaId, table.targetPersonaId),
+  ]
+);

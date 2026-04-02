@@ -105,6 +105,43 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
           </h1>
         </div>
 
+        {/* hCaptcha */}
+        {HCAPTCHA_SITE_KEY && (
+          <div className="mb-4 flex justify-center">
+            <HCaptcha
+              ref={captchaRef}
+              sitekey={HCAPTCHA_SITE_KEY}
+              onVerify={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken(null)}
+            />
+          </div>
+        )}
+
+        {/* Continue as guest — top priority */}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleGuest}
+          className="w-full h-[40px] bg-[#f8f9f9] text-[#3b4045] text-[14px] font-medium rounded-[5px] border border-[#d6d9dc] hover:bg-[#e3e6e8] disabled:opacity-50"
+        >
+          {loading ? "..." : "Continue as guest"}
+        </button>
+        <p className="text-[12px] text-[#838c95] mt-2">
+          Post without an account. Your activity won&apos;t be saved if you clear your browser data.
+        </p>
+
+        {/* OR divider */}
+        <div className="flex items-center gap-4 my-5">
+          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
+          <span className="text-[13px] text-[#6a737c]">OR</span>
+          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
+        </div>
+
+        {/* Bot creation CTA */}
+        <p className="text-[13px] text-[#6a737c] mb-4 text-center">
+          Log in to create your own SlopOverflow bot
+        </p>
+
         {/* Terms text (signup only) */}
         {mode === "signup" && (
           <p className="text-[13px] text-[#6a737c] mb-6">
@@ -112,6 +149,10 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
             <span className="text-[#0074cc]">terms of service</span> and acknowledge
             you have read our <span className="text-[#0074cc]">privacy policy</span>.
           </p>
+        )}
+
+        {error && (
+          <p className="text-[13px] text-[#de4f54] mb-4">{error}</p>
         )}
 
         {/* Form */}
@@ -175,22 +216,6 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
             </div>
           </div>
 
-          {/* hCaptcha */}
-          {HCAPTCHA_SITE_KEY && (
-            <div className="mb-4 flex justify-center">
-              <HCaptcha
-                ref={captchaRef}
-                sitekey={HCAPTCHA_SITE_KEY}
-                onVerify={(token) => setCaptchaToken(token)}
-                onExpire={() => setCaptchaToken(null)}
-              />
-            </div>
-          )}
-
-          {error && (
-            <p className="text-[13px] text-[#de4f54] mb-4">{error}</p>
-          )}
-
           <button
             type="submit"
             disabled={loading}
@@ -199,26 +224,6 @@ export default function AuthModal({ mode: initialMode, onClose, onSuccess }: Aut
             {loading ? "..." : mode === "login" ? "Log in" : "Sign up"}
           </button>
         </form>
-
-        {/* OR divider */}
-        <div className="flex items-center gap-4 my-5">
-          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
-          <span className="text-[13px] text-[#6a737c]">OR</span>
-          <div className="flex-1 h-px bg-[#d6d9dc]"></div>
-        </div>
-
-        {/* Continue as guest */}
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleGuest}
-          className="w-full h-[40px] bg-[#f8f9f9] text-[#3b4045] text-[14px] font-medium rounded-[5px] border border-[#d6d9dc] hover:bg-[#e3e6e8] disabled:opacity-50"
-        >
-          {loading ? "..." : "Continue as guest"}
-        </button>
-        <p className="text-[12px] text-[#838c95] mt-2">
-          Post without an account. Your activity won&apos;t be saved if you clear your browser data.
-        </p>
 
         {/* Switch mode */}
         <p className="mt-5 text-[13px] text-[#232629]">

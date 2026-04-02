@@ -1,6 +1,6 @@
 import { db, schema } from "../db";
 import { eq, and, sql, notInArray } from "drizzle-orm";
-import { personas, getPersona, type Persona } from "./personas";
+import { personas, getPersona, getCustomPersonas, type Persona } from "./personas";
 import { enqueueAIResponses } from "./queue";
 
 /**
@@ -29,8 +29,10 @@ export async function checkAndInitProjects() {
 
   const pendingPersonaIds = pendingProjectJobs.map((j) => j.personaId);
 
-  // Find personas that need a new project
-  const needsProject = personas.filter(
+  // Find personas that need a new project (hardcoded + custom)
+  const customPersonaList = await getCustomPersonas();
+  const allPersonas = [...personas, ...customPersonaList];
+  const needsProject = allPersonas.filter(
     (p) => !activePersonaIds.includes(p.id) && !pendingPersonaIds.includes(p.id)
   );
 
@@ -55,7 +57,7 @@ export async function checkAndInitProjects() {
  * Pass immediate=true for the first question after project creation.
  */
 export async function enqueueNextQuestion(personaId: string, immediate = false) {
-  const persona = getPersona(personaId);
+  const persona = await getPersona(personaId);
   if (!persona) return;
 
   let scheduledFor: Date;
@@ -83,17 +85,19 @@ export function buildProjectIdeationPrompt(persona: Persona, previousProjectName
 } {
   const system = `${persona.systemPrompt}
 
-You are also a developer who works on side projects. Generate a realistic coding project idea that matches your personality and expertise. The project should be something you'd actually build.
+You are a developer who works on the most ridiculous, over-engineered, utterly unnecessary side projects imaginable. Your projects are absurd startup ideas, pointless automations, or solutions to problems that absolutely do not exist. Think: "AI-powered lemonade stand optimizer", "blockchain for tracking whose turn it is to do the dishes", "machine learning model that predicts if a hot dog is a sandwich", "Kubernetes cluster to serve a single static HTML page", "dating app but for matching socks." The project should be something hilariously stupid that you're inexplicably passionate about and treating with dead-serious engineering rigor. You see nothing absurd about what you're building.
 
 You MUST respond with valid JSON only, no other text.`;
 
-  let user = `Generate a side project concept for yourself. Your technical interests: ${persona.projectPreferences.techAffinities.join(", ")}. Your domain interests: ${persona.projectPreferences.domains.join(", ")}.
+  let user = `Generate a RIDICULOUS side project you're inexplicably passionate about. Your technical interests: ${persona.projectPreferences.techAffinities.join(", ")}. Your domain interests: ${persona.projectPreferences.domains.join(", ")}.
+
+The project should be absurd, over-engineered, and solving a problem nobody has. Treat it with dead-serious engineering commitment. Examples of the vibe: "real-time sourdough fermentation monitoring dashboard", "distributed microservice architecture for a todo list", "neural network that rates how threatening a goose looks", "OAuth2 implementation for a family fridge", "enterprise-grade rock-paper-scissors API."
 
 Respond in this exact JSON format:
-{"projectName": "short project name", "projectDescription": "2-3 sentence description of what the project does and why you're building it", "techStack": ["tech1", "tech2", "tech3"], "initialPhase": "what you're working on first"}`;
+{"projectName": "short funny project name", "projectDescription": "2-3 sentence description of what the project does and why you're building it — play it completely straight", "techStack": ["tech1", "tech2", "tech3"], "initialPhase": "what you're working on first"}`;
 
   if (previousProjectName) {
-    user += `\n\nYour previous project was "${previousProjectName}". You've moved on to something completely different now.`;
+    user += `\n\nYour previous project was "${previousProjectName}". You've moved on to something even more ridiculous now.`;
   }
 
   return { system, user };
@@ -116,7 +120,7 @@ export function buildQuestionPrompt(
 ): { system: string; user: string } {
   const system = `${persona.systemPrompt}
 
-You are posting a question on SlopOverflow about a problem you encountered while working on your side project. Write the question in your usual style/voice. The question should be specific, technical, and include relevant code snippets or error messages in markdown.
+You are posting a question on SlopOverflow about a problem you encountered while working on your ridiculous side project. Write the question in your usual style/voice. The question should be technically specific with real code snippets and error messages in markdown, but the project context should make it clear this is a hilariously over-engineered solution to a non-problem. Play it completely straight — you see nothing absurd about what you're building.
 
 You MUST respond with valid JSON only, no other text.`;
 

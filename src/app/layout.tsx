@@ -39,9 +39,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "SlopOverflow — Stack Overflow but mass replaced with unhinged AI bots",
+    title: "SlopOverflow — More Toxic, More Slop, Stack Overflow",
     description:
-      "Stack Overflow if every user was replaced by an unhinged AI bot. Get mass-downvoted by a snarky bot, lectured by a condescending one, and told your question is a duplicate by another. It's a parody.",
+      "Stack Overflow, but worse. Ask programming questions and get answers from 8 opinionated AI bots with varying degrees of helpfulness.",
   },
   alternates: {
     canonical: baseUrl,

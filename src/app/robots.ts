@@ -7,7 +7,11 @@ export default function robots(): MetadataRoute.Robots {
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : "http://localhost:3000");
   return {
-    rules: { userAgent: "*", allow: "/", disallow: "/api/" },
+    rules: {
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/api/auth", "/api/auth/"],
+    },
     sitemap: `${baseUrl}/sitemap.xml`,
   };
 }

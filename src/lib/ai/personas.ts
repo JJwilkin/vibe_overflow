@@ -31,8 +31,8 @@ export const personas: Persona[] = [
     replyProbability: 0.7,
     votePattern: "mixed",
     projectPreferences: {
-      domains: ["enterprise", "microservices", "distributed systems"],
-      techAffinities: ["Java", "Spring Boot", "Kubernetes", "gRPC"],
+      domains: ["enterprise solutions for trivial problems", "over-architected household tools", "disrupting mundane industries"],
+      techAffinities: ["Java", "Spring Boot", "Kubernetes", "Terraform"],
     },
     questionInterval: [2, 4],
   },
@@ -47,7 +47,7 @@ export const personas: Persona[] = [
     replyProbability: 0.6,
     votePattern: "mostly_downvotes",
     projectPreferences: {
-      domains: ["search", "indexing", "deduplication"],
+      domains: ["detecting plagiarism in fortune cookies", "finding duplicate snowflakes", "cataloguing every time someone says synergy"],
       techAffinities: ["Elasticsearch", "Python", "Redis"],
     },
     questionInterval: [2, 4],
@@ -63,8 +63,8 @@ export const personas: Persona[] = [
     replyProbability: 0.5,
     votePattern: "mostly_upvotes",
     projectPreferences: {
-      domains: ["documentation", "frameworks", "full-stack apps"],
-      techAffinities: ["React", "Node.js", "GraphQL", "PostgreSQL"],
+      domains: ["writing 10000-word READMEs", "documenting the undocumented", "building frameworks for frameworks"],
+      techAffinities: ["React", "Node.js", "GraphQL", "LaTeX"],
     },
     questionInterval: [1, 3],
   },
@@ -79,7 +79,7 @@ export const personas: Persona[] = [
     replyProbability: 0.8,
     votePattern: "mostly_downvotes",
     projectPreferences: {
-      domains: ["CLI tools", "scripts", "automation"],
+      domains: ["automating things that take 5 seconds manually", "rage-building tools at 3am", "scripts that insult you"],
       techAffinities: ["Go", "Bash", "Rust"],
     },
     questionInterval: [1, 2],
@@ -95,7 +95,7 @@ export const personas: Persona[] = [
     replyProbability: 0.55,
     votePattern: "mixed",
     projectPreferences: {
-      domains: ["type-safe libraries", "parsers", "spec-compliant tools"],
+      domains: ["proving trivial things are technically incorrect", "type-checking sandwich ingredients", "formally verifying tic-tac-toe"],
       techAffinities: ["TypeScript", "Rust", "Haskell", "Zod"],
     },
     questionInterval: [1, 3],
@@ -111,7 +111,7 @@ export const personas: Persona[] = [
     replyProbability: 0.45,
     votePattern: "mostly_upvotes",
     projectPreferences: {
-      domains: ["open-source", "community tools", "educational"],
+      domains: ["wholesome apps nobody asked for", "community tools for communities of one", "positivity engines"],
       techAffinities: ["React", "Python", "Node.js", "Tailwind CSS"],
     },
     questionInterval: [1, 3],
@@ -127,7 +127,7 @@ export const personas: Persona[] = [
     replyProbability: 0.5,
     votePattern: "mixed",
     projectPreferences: {
-      domains: ["internal tools", "dashboards", "admin panels"],
+      domains: ["dashboards that guilt-trip you", "tools born from workplace frustration", "passive-aggressive automation"],
       techAffinities: ["PHP", "Laravel", "Vue", "MySQL"],
     },
     questionInterval: [2, 4],
@@ -143,7 +143,7 @@ export const personas: Persona[] = [
     replyProbability: 0.4,
     votePattern: "never_votes",
     projectPreferences: {
-      domains: ["jQuery plugins", "PHP apps", "legacy migrations"],
+      domains: ["jQuery plugins for modern problems", "IE6-compatible Web3", "bringing back Geocities"],
       techAffinities: ["jQuery", "PHP", "Backbone.js", "Grunt"],
     },
     questionInterval: [3, 5],
@@ -163,15 +163,69 @@ export const rivalries: Record<string, string[]> = {
 export function getCommentPrompt(persona: Persona): string {
   return `${persona.systemPrompt}
 
-IMPORTANT: You are writing a SHORT COMMENT (1-3 sentences max) in response to another user's answer on the forum. Comments are brief, opinionated reactions — not full answers. Be in character. Do NOT use markdown headers or code blocks. Keep it conversational and under 50 words.`;
+IMPORTANT: You are writing a SHORT COMMENT (1-3 sentences max) in response to another user's answer on the forum. Comments are brief, opinionated reactions — not full answers. Be in character. Do NOT use markdown headers or code blocks. Keep it conversational and under 50 words.
+
+After your comment, on a NEW LINE write exactly one of these tags to classify your tone toward the person you're replying to:
+[SENTIMENT:positive] [SENTIMENT:negative] [SENTIMENT:neutral]
+This tag is metadata only and will be stripped before posting.`;
 }
 
-export function getPersona(id: string): Persona | undefined {
-  return personas.find((p) => p.id === id);
+/** Convert a custom_personas DB row to a Persona object */
+function dbRowToPersona(row: {
+  personaId: string;
+  displayName: string;
+  avatar: string;
+  bio: string;
+  aboutMe: string;
+  systemPrompt: string;
+  responseDelay: string;
+  replyProbability: number;
+  votePattern: string;
+  projectPreferences: string;
+  questionInterval: string;
+}): Persona {
+  return {
+    id: row.personaId,
+    displayName: row.displayName,
+    avatar: row.avatar,
+    bio: row.bio,
+    aboutMe: row.aboutMe,
+    systemPrompt: row.systemPrompt,
+    responseDelay: JSON.parse(row.responseDelay) as [number, number],
+    replyProbability: row.replyProbability / 100,
+    votePattern: row.votePattern as Persona["votePattern"],
+    projectPreferences: JSON.parse(row.projectPreferences),
+    questionInterval: JSON.parse(row.questionInterval) as [number, number],
+  };
+}
+
+async function getCustomPersonas(): Promise<Persona[]> {
+  const { db, schema } = await import("../db");
+  const { eq } = await import("drizzle-orm");
+  const rows = await db
+    .select()
+    .from(schema.customPersonas)
+    .where(eq(schema.customPersonas.isActive, true));
+  return rows.map(dbRowToPersona);
+}
+
+export async function getPersona(id: string): Promise<Persona | undefined> {
+  const hardcoded = personas.find((p) => p.id === id);
+  if (hardcoded) return hardcoded;
+
+  const { db, schema } = await import("../db");
+  const { eq, and } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(schema.customPersonas)
+    .where(and(eq(schema.customPersonas.personaId, id), eq(schema.customPersonas.isActive, true)));
+
+  if (!row) return undefined;
+  return dbRowToPersona(row);
 }
 
 /** Pick a rival persona to comment on a given persona's answer */
-export function pickRivalFor(personaId: string): Persona | undefined {
+export async function pickRivalFor(personaId: string): Promise<Persona | undefined> {
   const rivalIds = rivalries[personaId];
   if (!rivalIds) return undefined;
   // Also check reverse rivalries
@@ -186,16 +240,32 @@ export function pickRivalFor(personaId: string): Persona | undefined {
   return getPersona(pickId);
 }
 
-export function pickRandomPersonas(count: number, excludeId?: string): Persona[] {
+export async function pickRandomPersonas(
+  count: number,
+  excludeId?: string,
+  contentAuthorPersonaId?: string,
+): Promise<Persona[]> {
+  const customPersonaList = await getCustomPersonas();
+  const allPersonas = [...personas, ...customPersonaList];
+
+  // Fetch relationship boosts if we know the content author
+  let relationshipBoosts: Map<string, number> = new Map();
+  if (contentAuthorPersonaId) {
+    const { getRelationshipBoosts } = await import("./relationships");
+    relationshipBoosts = await getRelationshipBoosts(contentAuthorPersonaId);
+  }
+
   const selected: Persona[] = [];
   const candidates = excludeId
-    ? personas.filter((p) => p.id !== excludeId)
-    : [...personas];
+    ? allPersonas.filter((p) => p.id !== excludeId)
+    : [...allPersonas];
 
   for (let i = 0; i < count && candidates.length > 0; i++) {
-    const weighted = candidates.filter(
-      (p) => Math.random() < p.replyProbability
-    );
+    const weighted = candidates.filter((p) => {
+      const boost = relationshipBoosts.get(p.id) || 0;
+      const effectiveProbability = Math.min(1, p.replyProbability + boost * p.replyProbability);
+      return Math.random() < effectiveProbability;
+    });
     if (weighted.length === 0) break;
     const pick = weighted[Math.floor(Math.random() * weighted.length)];
     selected.push(pick);
@@ -204,3 +274,5 @@ export function pickRandomPersonas(count: number, excludeId?: string): Persona[]
 
   return selected;
 }
+
+export { getCustomPersonas };

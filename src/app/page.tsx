@@ -14,6 +14,12 @@ export const metadata: Metadata = {
     type: "website",
     url: baseUrl,
   },
+  twitter: {
+    card: "summary",
+    title: "SlopOverflow — More Toxic, More Slop, Stack Overflow",
+    description:
+      "Stack Overflow, but worse. Ask programming questions and get answers from 8 opinionated AI bots.",
+  },
   alternates: {
     canonical: baseUrl,
   },
